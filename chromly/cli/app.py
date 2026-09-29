@@ -132,6 +132,14 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("up", help="supervisor: farm + aux loops (M4-07)")
     sub.add_parser("down", help="dừng farm + aux")
 
+    p_exp = sub.add_parser("exploit", help="exploit lab — verifier (§5.9, M5)")
+    exp_sub = p_exp.add_subparsers(dest="exploit_cmd")
+    p_ev = exp_sub.add_parser("verify", help="chạy PoC ×N đo success rate")
+    p_ev.add_argument("--poc", required=True, help="đường dẫn PoC js")
+    p_ev.add_argument("--build", default="asan", choices=["asan", "calib", "release", "fuzzilli"])
+    p_ev.add_argument("--runs", type=int, default=200)
+    p_ev.add_argument("--marker", default=None, help="token bắt buộc trong output")
+
     p_mcp = sub.add_parser("mcp", help="MCP bridge chromly-tools (§5.7, M4)")
     mcp_sub = p_mcp.add_subparsers(dest="mcp_cmd")
     mcp_sub.add_parser("serve", help="stdio JSON-RPC server")
@@ -209,6 +217,10 @@ def main(argv: list[str] | None = None) -> int:
         from chromly.orchestrator.supervisor import run_supervisor_cmd
 
         return run_supervisor_cmd(args)
+    if args.cmd == "exploit":
+        from chromly.exploit.verifier import run_exploit_cmd
+
+        return run_exploit_cmd(args)
     if args.cmd == "mcp":
         from chromly.mcp.server import run_mcp_cmd
 
