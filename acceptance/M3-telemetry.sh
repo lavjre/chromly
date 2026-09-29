@@ -43,12 +43,24 @@ section "alert engine — watcher_lag"
 from chromly.intel import watcher
 
 st = watcher._load_state()
+st["_saved_lag"] = st.get("last_lag_hours")
 st["last_lag_hours"] = 99.0
 watcher._save_state(st)
 PY
 OUT="$("$VENV_BIN/chromly" telemetry alerts | tee "$LOG_DIR/m3-alerts.log")"
 echo "$OUT"
 grep -q "watcher_lag" <<<"$OUT" && pass "alert watcher_lag bắn" || fail "không thấy alert"
+# khôi phục lag thật (tránh để lại 99h trong state)
+"$VENV_BIN/python" - <<'PY'
+from chromly.intel import watcher
+
+st = watcher._load_state()
+if st.pop("_saved_lag", None) is not None:
+    st["last_lag_hours"] = st.pop("_saved_lag", None)
+elif st.get("last_lag_hours") == 99.0:
+    st["last_lag_hours"] = None
+watcher._save_state(st)
+PY
 AID="$(grep -oE '^\[[0-9]+\] \[[a-z]+\] watcher_lag' <<<"$OUT" | grep -oE '[0-9]+' | head -1)"
 if [[ -n "$AID" ]]; then
     "$VENV_BIN/chromly" telemetry alerts --ack "$AID" | tee -a "$LOG_DIR/m3-alerts.log"
