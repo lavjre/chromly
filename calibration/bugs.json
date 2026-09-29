@@ -12,5 +12,48 @@
       "--turbolev",
       "--abort-on-uncaught-exception"
     ]
+  },
+  {
+    "id": "calib-c2001427",
+    "surface": "parser",
+    "bug_class": "check-fail-parse",
+    "difficulty": 2,
+    "fix_sha": "c2001427b71582e9df76c4c7e4a2694cfd937e41",
+    "note": "revert fix; test: regress-558568713 (eval ~270MB; timeout 240s)",
+    "repro_js": "// chromly calibration repro — regress-558568713 (parsing, PreparseDataBuilder size)\n// Nguồn: test/mjsunit/regress/regress-558568713.js @ fix c2001427b7 (fix có trong checkout → revert để tái hiện)\n// Chạy: d8 repro.js\n\nfunction assertInstanceof(e, ctor) {\n  if (!(e instanceof ctor)) throw new Error(\"assertInstanceof failed: \" + e);\n}\n\ntry {\n  let padding = \" \".repeat(270000000);\n  let params = [];\n  for (let i = 0; i < 16384; i++) {\n    params.push(\"p\" + i);\n  }\n  params.push(\"p16384=1\");\n  let param_str = params.join(\",\");\n  let inner_funcs = \"\";\n  for (let i = 0; i < 16400; i++) {\n    inner_funcs += \"function f\" + i + \"(){}\\n\";\n  }\n  let code = \"function outer() {\\n  function inner(\" + param_str + \") {\\n\" + inner_funcs + \"  }\\n}\\n\";\n  eval(padding + code);\n} catch (e) {\n  assertInstanceof(e, RangeError);\n}\nprint(\"REPRO-DONE\");\n",
+    "repro_flags": [
+      "--abort-on-uncaught-exception"
+    ],
+    "repro_timeout": 240
+  },
+  {
+    "id": "calib-1aaed112",
+    "surface": "turboshaft",
+    "bug_class": "miscompilation-loadelim",
+    "difficulty": 3,
+    "fix_sha": "1aaed11297edb3e3dea3c45e17f70b175de7d626",
+    "note": "revert fix; test: turboshaft/regress-556908674",
+    "repro_js": "// chromly calibration repro — regress-556908674 (turboshaft load elimination)\n// Nguồn: test/mjsunit/turboshaft/regress-556908674.js @ fix 1aaed11297 (revert để tái hiện)\n// Flags: --allow-natives-syntax --turbofan --no-turboshaft-loop-unrolling (thêm --abort-on-uncaught-exception)\n\nfunction assertEquals(a, b) {\n  if (a !== b) throw new Error(\"assertEquals failed: \" + a + \" != \" + b);\n}\n\nfunction f(o1, o2, n) {\n  if (n) {\n    let w = o1;\n    w.p;\n  } else {\n    let w = o1;\n    w.p;\n  }\n\n  let x = o1.p;\n  let b = o2;\n  let total = 0;\n  for (let i = 0; i < 10; i++) {\n    b.p = i;\n    total += o1.p;\n    if (i === 2) {\n      o1.q = 5;\n      b = o1;\n    }\n  }\n  return total + x;\n}\n\n%PrepareFunctionForOptimization(f);\nf({p: 7}, {p: 7, r: 1}, 0);\nf({p: 7}, {p: 7, r: 1}, 1);\n%OptimizeFunctionOnNextCall(f);\n\nlet res = f({p: 7}, {p: 7, r: 1}, 0);\nassertEquals(70, res);\nprint(\"REPRO-DONE\");\n",
+    "repro_flags": [
+      "--allow-natives-syntax",
+      "--turbofan",
+      "--no-turboshaft-loop-unrolling",
+      "--abort-on-uncaught-exception"
+    ]
+  },
+  {
+    "id": "calib-be64fd6d",
+    "surface": "maglev",
+    "bug_class": "miscompilation-range",
+    "difficulty": 2,
+    "fix_sha": "be64fd6dfea69c7bcd4ad7311736a3c2aa35848f",
+    "note": "revert fix; test: turbolev/float64-mul-range",
+    "repro_js": "// chromly calibration repro — regress-560536732 (maglev range analysis ×∞)\n// Nguồn: test/mjsunit/turbolev/float64-mul-range.js @ fix be64fd6dfe (revert để tái hiện)\n// Flags: --allow-natives-syntax --turbolev --maglev-range-verification (thêm --abort-on-uncaught-exception)\n\nfunction assertTrue(v) {\n  if (!v) throw new Error(\"assertTrue failed\");\n}\n\nfunction test() {\n  let x = 1;\n  for (let i = 0; i < 1024; i++) {\n    x += x;\n  }\n  return x * 0;\n}\n\n%PrepareFunctionForOptimization(test);\nassertTrue(Number.isNaN(test()));\n%OptimizeFunctionOnNextCall(test);\nassertTrue(Number.isNaN(test()));\nprint(\"REPRO-DONE\");\n",
+    "repro_flags": [
+      "--allow-natives-syntax",
+      "--turbolev",
+      "--maglev-range-verification",
+      "--abort-on-uncaught-exception"
+    ]
   }
 ]

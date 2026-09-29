@@ -70,7 +70,7 @@ def calibrate(bug: dict) -> dict:
     if rc != 0:
         return {"id": bug_id, "status": "fix-sha-missing"}
     patch_file = out_dir / "revert.patch"
-    patch_file.write_text(patch)
+    patch_file.write_text(patch + "\n")  # _git strip()→ thiếu newline cuối = "corrupt patch"
     rc, out = _git(["apply", "-R", str(patch_file)], v8)
     revert_applied = rc == 0
     if not revert_applied:
@@ -87,7 +87,9 @@ def calibrate(bug: dict) -> dict:
         repro_js = out_dir / "repro.js"
         repro_js.write_text(bug["repro_js"])
         flags = bug.get("repro_flags", [])
-        res = repro.repro_run(d8, repro_js, runs=5, extra_flags=flags)
+        res = repro.repro_run(
+            d8, repro_js, runs=5, extra_flags=flags, timeout=int(bug.get("repro_timeout", 60))
+        )
         (out_dir / "repro.out").write_text(res["output"])
 
         fault = classify.classify_text(res["output"])
