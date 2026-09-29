@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chromly"
+version = "0.1.0.dev0"
+description = "Autonomous V8/Chrome bug-hunting system — supervisor · fuzz farm · intel · case pipeline (PLAN.md)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["ruff>=0.9", "pytest>=8.3"]
+
+[project.scripts]
+chromly = "chromly.cli.app:main"
+
+[tool.setuptools.packages.find]
+include = ["chromly*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["build/ida-db"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
