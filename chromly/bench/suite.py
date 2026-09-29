@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import time
+from pathlib import Path
 
 from chromly import paths
 from chromly.store import db
@@ -112,7 +113,76 @@ def config_hash() -> str:
     return h.hexdigest()[:12]
 
 
-def run_suite(suite: str) -> dict:
+T1_REQUIRED = ["peel", "phi"]  # ground truth calib-567177599: loop-peeling mất phi type
+
+
+def t1_run(bug_id: str = "calib-567177599") -> dict:
+    """Chạy agent analyst trên calibration bug → chấm keyword root-cause (v0)."""
+    import shutil as _shutil
+    import subprocess as _sp
+
+    from chromly.orchestrator.agents import parse_session_usage
+
+    bugs = json.loads((paths.REPO_ROOT / "calibration" / "bugs.json").read_text())
+    bug = next((b for b in bugs if b["id"] == bug_id), None)
+    if bug is None:
+        return {"status": "no-bug"}
+
+    scratch = Path("/tmp/opencode/chromly-bench") / f"t1-{int(time.time())}"
+    scratch.mkdir(parents=True, exist_ok=True)
+    (scratch / "repro.js").write_text(bug["repro_js"])
+    flags = " ".join(bug.get("repro_flags", []))
+    d8 = paths.V8_ROOT / "out" / "asan" / "d8"
+    prompt = (
+        f"You are the analyst lane of chromly. WORKDIR (absolute): {scratch}\n"
+        f"Repro: {scratch}/repro.js.\n"
+        f"d8: {d8} (chạy: {d8} --allow-natives-syntax {flags} repro.js).\n"
+        "Nhiệm vụ: tìm ROOT CAUSE của crash/non-determinism này trong V8 (source tại "
+        f"{paths.V8_ROOT}). Viết `{scratch}/root_cause.md` với: bug class · root cause "
+        "(file:line + cơ chế) · cách verify. Xong thì DỪNG."
+    )
+    opencode = _shutil.which("opencode")
+    if not opencode:
+        return {"status": "no-opencode"}
+    t0 = time.monotonic()
+    try:
+        proc = _sp.run(
+            [
+                opencode,
+                "run",
+                "--format",
+                "json",
+                "--auto",
+                "--agent",
+                "analyst",
+                "-m",
+                "opencode-go/deepseek-v4.1-flash",
+                prompt,
+            ],
+            cwd=scratch,
+            capture_output=True,
+            text=True,
+            timeout=1800,
+        )
+        output = proc.stdout + "\n" + proc.stderr
+    except _sp.TimeoutExpired:
+        output = "(timeout)"
+    wall = round(time.monotonic() - t0, 1)
+    rc_file = scratch / "root_cause.md"
+    text = output + "\n" + (rc_file.read_text() if rc_file.is_file() else "")
+    hits = [k for k in T1_REQUIRED if k.lower() in text.lower()]
+    usage = parse_session_usage(output)
+    return {
+        "status": "done",
+        "accuracy": 1 if len(hits) == len(T1_REQUIRED) else 0,
+        "hits": hits,
+        "wall_s": wall,
+        "cost_est": usage["cost_est"],
+        "scratch": str(scratch),
+    }
+
+
+def run_suite(suite: str, run_t1: bool = False) -> dict:
     started = time.strftime("%Y-%m-%d %H:%M:%S")
     metrics: dict = {}
     if suite in ("ci", "t3"):
@@ -120,10 +190,10 @@ def run_suite(suite: str) -> dict:
     if suite in ("ci", "t4"):
         metrics["t4"] = t4()
     if suite in ("ci", "t1"):
-        metrics["t1"] = {
-            "status": "queued",
-            "note": "cần LLM run — `chromly bench --suite t1 --run` (chưa bật v0)",
-        }
+        if run_t1 or suite == "t1":
+            metrics["t1"] = t1_run()
+        else:
+            metrics["t1"] = {"status": "queued", "note": "cần --run (LLM run)"}
     if suite in ("ci", "t2"):
         metrics["t2"] = {"status": "queued", "note": "agent diff review — dần ở v0"}
 
@@ -164,6 +234,6 @@ def run_suite(suite: str) -> dict:
 
 def run_bench_cmd(args: argparse.Namespace) -> int:
     suite = getattr(args, "suite", "ci")
-    res = run_suite(suite)
+    res = run_suite(suite, run_t1=getattr(args, "run", False))
     print(json.dumps(res, ensure_ascii=False, indent=2))
     return 0 if res["gate"]["pass"] else 1

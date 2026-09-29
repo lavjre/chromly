@@ -70,6 +70,9 @@ echo "apport: $(systemctl is-active apport.service 2>/dev/null || echo inactive)
 
 say "systemd slices (§6.4)"
 install -m 644 "$HERE"/systemd/chromly-*.slice /etc/systemd/system/
+install -m 644 "$HERE"/systemd/chromly-supervisor.service /etc/systemd/system/
+install -m 644 "$HERE"/systemd/chromly-report.service /etc/systemd/system/
+install -m 644 "$HERE"/systemd/chromly-report.timer /etc/systemd/system/
 systemctl daemon-reload
 for s in svc build fuzz case; do
     systemctl start "chromly-$s.slice" 2>/dev/null || true

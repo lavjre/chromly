@@ -17,3 +17,4 @@ Mỗi quyết định kiến trúc của chromly = 1 file, 10–20 dòng. Format
 | [007](0007-calibration-vs-benchmark.md) | Calibration (đúng/sai) tách khỏi Benchmark (so sánh) | Accepted |
 | [008](0008-ida-official-mcp-single.md) | 1 server IDA duy nhất (Hex-Rays official MCP) | Accepted |
 | [009](0009-case-direct-on-vm.md) | Case chạy trực tiếp trên VM (supersede 002) | Accepted |
+| [010](0010-libfuzzer-engine-defer.md) | libFuzzer engine: replay v0, engine để v2 (shim) | Accepted |

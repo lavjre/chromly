@@ -128,6 +128,11 @@ def main(argv: list[str] | None = None) -> int:
 
     p_bench = sub.add_parser("bench", help="bench suite T1–T4 + Prompt CI gate (§8, M4)")
     p_bench.add_argument("--suite", default="ci", choices=["ci", "t1", "t2", "t3", "t4"])
+    p_bench.add_argument("--run", action="store_true", help="chạy LLM run cho T1 (mặc định queue)")
+
+    p_rep = sub.add_parser("report", help="report generator — weekly digest (§7.2, M8)")
+    rep_sub = p_rep.add_subparsers(dest="report_cmd")
+    rep_sub.add_parser("weekly", help="sinh store/reports/weekly-YYYY-WW.md")
 
     sub.add_parser("up", help="supervisor: farm + aux loops (M4-07)")
     sub.add_parser("down", help="dừng farm + aux")
@@ -213,6 +218,10 @@ def main(argv: list[str] | None = None) -> int:
         from chromly.bench.suite import run_bench_cmd
 
         return run_bench_cmd(args)
+    if args.cmd == "report":
+        from chromly.orchestrator.report import run_report_cmd
+
+        return run_report_cmd(args)
     if args.cmd in ("up", "down"):
         from chromly.orchestrator.supervisor import run_supervisor_cmd
 

@@ -1,0 +1,18 @@
+[Unit]
+Description=chromly supervisor — fuzz farm + aux loops (PLAN §10.1, M8 sơ khai)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=lavjre
+WorkingDirectory=/home/lavjre/chromly
+ExecStart=/home/lavjre/chromly/.venv/bin/chromly up
+ExecStop=/home/lavjre/chromly/.venv/bin/chromly down
+TimeoutStopSec=180
+# NOTE: chưa gắn Slice — supervisor spawn children khắp nơi; slice đúng theo unit cần
+# systemd-run cho từng fuzz worker (M8 hardening tiếp theo).
+
+[Install]
+WantedBy=multi-user.target

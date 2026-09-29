@@ -1,0 +1,8 @@
+[Unit]
+Description=chromly weekly digest (§7.2)
+
+[Service]
+Type=oneshot
+User=lavjre
+WorkingDirectory=/home/lavjre/chromly
+ExecStart=/home/lavjre/chromly/.venv/bin/chromly report weekly
