@@ -109,6 +109,17 @@ def _kill_tree(pid: int, grace: float = 10.0) -> None:
         os.killpg(pid, signal.SIGKILL)
 
 
+def _log_has(rec: dict, needle: str, tail_bytes: int = 30000) -> bool:
+    try:
+        with open(rec["log"], "rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - tail_bytes))
+            return needle.encode() in fh.read()
+    except OSError:
+        return False
+
+
 def _restart(state: dict, name: str, rec: dict, reason: str, now: float) -> dict:
     pid = rec.get("pid")
     if pid:
@@ -127,9 +138,13 @@ def _restart(state: dict, name: str, rec: dict, reason: str, now: float) -> dict
         return {"unit": name, "action": "degraded", "reason": reason}
 
     unit = None
-    if rec["type"] == "fuzzilli" and reason == "cooldown-recovery":
-        # recovery sau degraded: fresh start (corpus có thể hỏng → import abort loop)
-        unit = farm.fuzzilli_unit(fresh=True)
+    if rec["type"] == "fuzzilli" and (
+        reason == "cooldown-recovery" or _log_has(rec, "Corpus import aborted")
+    ):
+        # corpus hỏng làm import abort (signal 6) — cách ly để start sạch, giữ crashes/stats
+        moved = farm.quarantine_fuzzilli_corpus()
+        append_event("corpus-quarantine", name, {"reason": reason, "moved": moved})
+        unit = farm.fuzzilli_unit()
     else:
         for u in farm.default_units():
             if u.name == name:

@@ -80,6 +80,19 @@ def fuzzilli_unit(fresh: bool = False) -> Unit:
     return Unit("fuzzilli", "fuzzilli", cmd, LOGS_DIR / "fuzzilli.log")
 
 
+def quarantine_fuzzilli_corpus() -> str | None:
+    """Rename corpus/old_corpus sang frozen-<ts> (import khỏi crash; giữ để bisect sau)."""
+    storage = FUZZ_DIR / "fuzzilli"
+    moved = []
+    for name in ("corpus", "old_corpus"):
+        p = storage / name
+        if p.is_dir():
+            dest = storage / f"{name}.frozen-{int(time.time())}"
+            p.rename(dest)
+            moved.append(dest.name)
+    return ",".join(moved) or None
+
+
 def libfuzzer_units() -> list[Unit]:
     """2 unit libFuzzer (parser · wasm) — v0 replay wrapper (V8 standalone thiếu engine).
     Xem chromly/fuzz/replay.py + task M1-08 (engine thật)."""
