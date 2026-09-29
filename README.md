@@ -8,3 +8,9 @@ Autonomous V8/Chrome bug-hunting system — fuzzing 24/7 (no LLM) + patch-diff i
 - **Runtime:** `runtime/` — mount → `/root/.config/opencode/` trong case container (`persona.txt` + `opencode.json` + IDA MCP).
 
 Trạng thái: **M0-ready** (docs + runtime config). Supervisor / fuzz farm / triage code bắt đầu từ M0.
+
+## Dev flow
+
+- **Build + chạy: chỉ trong Ubuntu VM** — V8, fuzzilli, docker, systemd, cgroup: Linux-only. Windows không build được fuzzer stack (và không nên — giành tài nguyên với VM).
+- Windows/host: edit docs + config → `git push`; VM: `git pull` để chạy.
+- Hoặc VS Code Remote-SSH thẳng vào VM — edit & run cùng chỗ, git vẫn là cầu.
