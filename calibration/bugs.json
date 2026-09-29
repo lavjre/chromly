@@ -1,0 +1,16 @@
+[
+  {
+    "id": "calib-567177599",
+    "surface": "maglev",
+    "bug_class": "miscompilation-type",
+    "difficulty": 2,
+    "fix_sha": "41d0351e57bb9282c5b2239e28865ac590c87e9d",
+    "note": "fix mới hơn checkout b8ffaab → bug có sẵn trên cây; revert không cần (harness tự nhận)",
+    "repro_js": "// chromly calibration repro — regress-567177599 (turbolev loop peeling phi type)\n// Nguồn: test/mjsunit/turbolev/regress-567177599.js @ fix 41d0351e57 (fix sau checkout b8ffaab → bug có trong build hiện tại)\n// Chạy: d8 --allow-natives-syntax --turbolev --abort-on-uncaught-exception repro.js\n\nfunction assertEquals(a, b) {\n  if (a !== b) throw new Error(\"assertEquals failed: expected \" + b + \" got \" + a);\n}\nfunction assertFalse(x) {\n  if (x) throw new Error(\"assertFalse failed\");\n}\n\nvar loop_value = 1.2;\nvar exit_value = 2.5;\nloop_value = 1.4;\nexit_value = 1.5;\n\nconst box = {value: 1.2};\nconst input = {[Symbol.toPrimitive]() { return box.value; }};\n\nfunction store(n, input) {\n  let value = 1.1;\n  let sum = 0;\n  while (n-- > 0) {\n    sum += value;\n    value = +input;\n    loop_value = value;\n  }\n  exit_value = value;\n  return sum;\n}\n\n%PrepareFunctionForOptimization(store);\nstore(3, input);\n\n%OptimizeFunctionOnNextCall(store);\nstore(3, input);\n\nbox.value = 42;\nstore(3, input);\nassertEquals(42, exit_value);\nassertFalse(%IsSmi(exit_value));\nprint(\"REPRO-PASS\");\n",
+    "repro_flags": [
+      "--allow-natives-syntax",
+      "--turbolev",
+      "--abort-on-uncaught-exception"
+    ]
+  }
+]

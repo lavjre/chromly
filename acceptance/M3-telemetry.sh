@@ -26,7 +26,8 @@ from chromly.store import db
 
 con = db.ensure_db()
 row = con.execute(
-    "SELECT max, n FROM metrics_rollup WHERE name = 'execs_per_sec' ORDER BY day DESC LIMIT 1"
+    "SELECT max, n FROM metrics_rollup WHERE name = 'execs_per_sec' AND scope = 'acceptance' "
+    "ORDER BY day DESC LIMIT 1"
 ).fetchone()
 print(f"rollup max={row['max']} n={row['n']}")
 assert row["max"] == 30.0
