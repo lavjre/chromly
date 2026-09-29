@@ -1,4 +1,4 @@
-# CHROMly — Tool List
+# chromly — Tool List
 
 > Đồng bộ PLAN.md v1.3. Trạng thái: ✅ có sẵn trong runtime hôm nay · 🚧 kế hoạch (milestone).
 > Agent (OpenCode) gọi tool qua 3 tầng: built-in → MCP servers → skills.
@@ -28,7 +28,7 @@
 Server: `HexRaysSA/ida-mcp` (IDA Nexus, multi-client share DB). Chạy trong case container:
 `uvx ida-mcp stdio --agent=opencode`.
 
-| Tool | Chức năng | CHROMly dùng vào |
+| Tool | Chức năng | chromly dùng vào |
 |---|---|---|
 | `ida.open_database` | Mở binary / .i64 trong IDA Pro — headless idalib worker hoặc attach file đang mở trong GUI; chạy auto-analysis | Mở d8 release/ASAN, chrome binary, hoặc .i64 sẵn của case |
 | `ida.execute_python` | Kênh chính: chạy IDAPython + ida-domain trên DB đang mở — decompile ra Hex-Rays, disasm, xrefs/callers/callees, func@addr, types/structs, rename, comment, **patch bytes**. Imports/vars persist theo lease | analyst: disasm crash-site khi source lệch binary; exploit-dev: gadget hunting, patch thử; intel: diff hàm trước/sau fix |

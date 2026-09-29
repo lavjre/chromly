@@ -1,4 +1,4 @@
-# CHROMly — Master Plan v1.6
+# chromly — Master Plan v1.6
 
 > v1.5 → v1.6: **Phụ lục A → Chương 1 — Research Philosophy** (workflows + strategy + hiến pháp anti-patterns); thêm **Alert engine**, **KG query layer**, **calibration metadata**, **human override**, **KPI rubric**, **evolution v2–v4**; benchmark thêm **agent topology**; bỏ số capacity kinh tế cho tới M4.
 > v1.4 → v1.5: nhận review kỹ thuật ngoài — thêm **Telemetry & Dashboard**, **Benchmark framework**, **Knowledge layer** (graph + notebook), **Prompt CI**, **Dynamic scheduler**, **ADR**; roadmap giãn **8–10 tuần** + tách **M5 Primitive / M6 Arb Read / M7 Arb RW**; kinh tế đổi thành **hypothesis** (đo lại sau M4).
@@ -12,7 +12,7 @@
 
 ## 0. Executive view
 
-**CHROMly là gì:** hệ thống tự hành hunt bug V8/Chrome — fuzzing chạy 24/7 không tốn LLM; intel track bòn patch-diff hằng ngày; khi có candidate, một case container chạy agent (OpenCode + persona Nini) để đi từ crash → root cause → PoC draft, không cần tay người.
+**chromly là gì:** hệ thống tự hành hunt bug V8/Chrome — fuzzing chạy 24/7 không tốn LLM; intel track bòn patch-diff hằng ngày; khi có candidate, một case container chạy agent (OpenCode + persona Nini) để đi từ crash → root cause → PoC draft, không cần tay người.
 
 **Chạy ở đâu:** Ubuntu VM 8c/16GB/200GB. Fuzz + build + case container sống chung — **scheduler theo metric là phần sống còn của thiết kế** (§6).
 
@@ -125,7 +125,7 @@
 UBUNTU VM (8 vCPU · 16 GB · 200 GB)
 ┌──────────────────────────────────────────────────────────────────────┐
 │ systemd slices: [svc 1.5G] [build 9G] [fuzz 4.5G] [case 4G]          │
-│ CHROMLY SUPERVISOR (Python 3.12, asyncio)          ~0.2G             │
+│ chromly supervisor (Python 3.12, asyncio)          ~0.2G             │
 │   queue · budget governor · resume policy · ledger · watchdogs       │
 │  ┌───────────────┐  ┌───────────────┐  ┌───────────────┐             │
 │  │ FUZZ FARM     │  │ BUILD RIG     │  │ INTEL WATCHER │             │

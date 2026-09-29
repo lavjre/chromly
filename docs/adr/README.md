@@ -1,6 +1,6 @@
 # ADR — Architecture Decision Records
 
-Mỗi quyết định kiến trúc của CHROMly = 1 file, 10–20 dòng. Format: `0000-template.md`.
+Mỗi quyết định kiến trúc của chromly = 1 file, 10–20 dòng. Format: `0000-template.md`.
 
 **Rule: không ADR, không merge** — mọi thay đổi kiến trúc phải kèm ADR (PLAN §9).
 

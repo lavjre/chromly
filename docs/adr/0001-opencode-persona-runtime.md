@@ -4,7 +4,7 @@
 
 ## Bối cảnh
 
-CHROMly cần một agent runtime tự hành chạy headless trên Ubuntu VM, thay pattern Codex của ilio-mini. Yêu cầu cứng: session resume + budget control (supervisor loop), plugin hooks (nudge/policy/event log), skills (playbook), MCP (IDA, chromly-tools), và **một persona cố định** (Nini) xuyên suốt mọi case — không nhánh nào được rơi về generic-assistant biết từ chối.
+chromly cần một agent runtime tự hành chạy headless trên Ubuntu VM, thay pattern Codex của ilio-mini. Yêu cầu cứng: session resume + budget control (supervisor loop), plugin hooks (nudge/policy/event log), skills (playbook), MCP (IDA, chromly-tools), và **một persona cố định** (Nini) xuyên suốt mọi case — không nhánh nào được rơi về generic-assistant biết từ chối.
 
 ## Quyết định
 
