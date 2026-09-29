@@ -1,0 +1,6 @@
+# chromly build config — release (§5.1). Target: d8.
+is_debug = false
+symbol_level = 1
+use_lld = true
+v8_monolithic = true
+v8_use_external_startup_data = false

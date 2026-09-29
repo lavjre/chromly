@@ -1,0 +1,8 @@
+# chromly build config — dcheck (§5.1). Target: d8.
+# dcheck_always_on cho type-confusion/verify bug (M1–M3).
+is_debug = false
+symbol_level = 1
+use_lld = true
+v8_monolithic = true
+v8_use_external_startup_data = false
+dcheck_always_on = true

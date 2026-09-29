@@ -1,0 +1,9 @@
+# chromly build config — asan (§5.1). Target: d8.
+# is_asan + VERIFY_HEAP cho fuzzing/triage (M1–M3).
+is_debug = false
+symbol_level = 2
+use_lld = true
+v8_monolithic = true
+v8_use_external_startup_data = false
+is_asan = true
+v8_enable_verify_heap = true
