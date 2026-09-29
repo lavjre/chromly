@@ -1,0 +1,17 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "persona": {
+      "description": "CHROMly case agent - Nini persona (persona.txt) as system prompt",
+      "mode": "primary",
+      "prompt": "{file:./persona.txt}"
+    }
+  },
+  "mcp": {
+    "ida": {
+      "type": "local",
+      "command": ["uvx", "ida-mcp", "stdio", "--agent=opencode"],
+      "enabled": true
+    }
+  }
+}

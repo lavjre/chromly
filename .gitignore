@@ -1,0 +1,12 @@
+# runtime artifacts — không commit
+store/
+cases/
+bench/runs/
+research/local/
+logs/
+*.log
+log.jsonl
+__pycache__/
+*.pyc
+.venv/
+venv/
