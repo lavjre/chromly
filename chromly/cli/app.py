@@ -13,7 +13,6 @@ from chromly.builds.args import CONFIG_NAMES
 
 STUBS: dict[str, str] = {
     "up": "M1",
-    "bench": "M4",
     "override": "M4",
 }
 
@@ -122,6 +121,9 @@ def main(argv: list[str] | None = None) -> int:
     p_so.add_argument("--minutes", type=float, default=30.0)
     p_so.add_argument("--reason", default=None)
 
+    p_bench = sub.add_parser("bench", help="bench suite T1–T4 + Prompt CI gate (§8, M4)")
+    p_bench.add_argument("--suite", default="ci", choices=["ci", "t1", "t2", "t3", "t4"])
+
     p_mcp = sub.add_parser("mcp", help="MCP bridge chromly-tools (§5.7, M4)")
     mcp_sub = p_mcp.add_subparsers(dest="mcp_cmd")
     mcp_sub.add_parser("serve", help="stdio JSON-RPC server")
@@ -191,6 +193,10 @@ def main(argv: list[str] | None = None) -> int:
         from chromly.orchestrator.scheduler import run_sched_cmd
 
         return run_sched_cmd(args)
+    if args.cmd == "bench":
+        from chromly.bench.suite import run_bench_cmd
+
+        return run_bench_cmd(args)
     if args.cmd == "mcp":
         from chromly.mcp.server import run_mcp_cmd
 
