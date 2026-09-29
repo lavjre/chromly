@@ -13,6 +13,7 @@ import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from chromly import paths
 from chromly.fuzz import farm
@@ -32,13 +33,17 @@ def _spawn_aux(name: str, rec: dict | None) -> dict:
     log = farm.LOGS_DIR / f"aux-{name}.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     cmd = [sys.executable, "-m", "chromly.cli.app", *AUX_SPECS[name]]
+    env = os.environ.copy()
+    oc_bin = Path.home() / ".opencode" / "bin"
+    if oc_bin.is_dir():
+        env["PATH"] = f"{oc_bin}:{env.get('PATH', '')}"
     proc = subprocess.Popen(
         cmd,
         stdout=log.open("a"),
         stderr=subprocess.STDOUT,
         start_new_session=True,
         cwd=str(paths.REPO_ROOT),
-        env=os.environ.copy(),
+        env=env,
     )
     return {"pid": proc.pid, "cmd": cmd, "log": str(log)}
 

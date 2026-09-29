@@ -89,7 +89,9 @@ def run_case(
 
     s = _prepare_scratch(case_id)
     set_state(case_id, "RUNNING")
-    opencode = shutil.which("opencode")
+    from chromly.orchestrator.agents import find_opencode
+
+    opencode = find_opencode()
     if not opencode:
         return {"case": case_id, "status": "no-opencode"}
 

@@ -118,7 +118,6 @@ T1_REQUIRED = ["peel", "phi"]  # ground truth calib-567177599: loop-peeling mấ
 
 def t1_run(bug_id: str = "calib-567177599") -> dict:
     """Chạy agent analyst trên calibration bug → chấm keyword root-cause (v0)."""
-    import shutil as _shutil
     import subprocess as _sp
 
     from chromly.orchestrator.agents import parse_session_usage
@@ -141,7 +140,9 @@ def t1_run(bug_id: str = "calib-567177599") -> dict:
         f"{paths.V8_ROOT}). Viết `{scratch}/root_cause.md` với: bug class · root cause "
         "(file:line + cơ chế) · cách verify. Xong thì DỪNG."
     )
-    opencode = _shutil.which("opencode")
+    from chromly.orchestrator.agents import find_opencode
+
+    opencode = find_opencode()
     if not opencode:
         return {"status": "no-opencode"}
     t0 = time.monotonic()

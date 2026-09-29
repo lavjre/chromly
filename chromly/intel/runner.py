@@ -64,10 +64,11 @@ def run_review(sha: str) -> dict:
     if not (archive / "commit.diff").is_file():
         return {"sha": sha, "status": "no-diff"}
 
-    opencode = shutil.which("opencode")
+    from chromly.orchestrator.agents import find_opencode
+
+    opencode = find_opencode()
     if not opencode:
         return {"sha": sha, "status": "no-opencode"}
-
     # Scratch ngoài repo — session opencode không lạc về git root
     scratch = SCRATCH_ROOT / sha
     scratch.mkdir(parents=True, exist_ok=True)

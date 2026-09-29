@@ -3,6 +3,17 @@
 from __future__ import annotations
 
 import json
+import shutil
+from pathlib import Path
+
+
+def find_opencode() -> str | None:
+    """Tìm opencode binary — kể cả khi PATH của systemd không có ~/.opencode/bin."""
+    exe = shutil.which("opencode")
+    if exe:
+        return exe
+    cand = Path.home() / ".opencode" / "bin" / "opencode"
+    return str(cand) if cand.is_file() else None
 
 
 def parse_session_usage(output: str) -> dict:
