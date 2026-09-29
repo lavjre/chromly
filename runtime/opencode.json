@@ -12,7 +12,7 @@
   "mcp": {
     "ida": {
       "type": "local",
-      "command": ["uvx", "ida-mcp", "stdio", "--agent=opencode"],
+      "command": ["uvx", "--exclude-newer=1s", "ida-mcp", "stdio", "--agent=opencode"],
       "enabled": true
     }
   }
