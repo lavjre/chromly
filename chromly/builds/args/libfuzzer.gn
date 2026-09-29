@@ -1,0 +1,12 @@
+# chromly build config — libFuzzer wrappers (M1-03, §5.2). Target: v8_fuzzers.
+# use_libfuzzer=true → use_fuzzing_engine → sanitizer coverage (trace-pc-guard) + link libFuzzer.
+# v8_enable_fuzztest=false: standalone V8 thiếu //testing/libfuzzer (fuzztest dep của chromium).
+# target: v8_fuzzers
+is_debug = false
+symbol_level = 1
+use_lld = true
+use_libfuzzer = true
+is_asan = true
+dcheck_always_on = true
+v8_enable_verify_heap = true
+v8_enable_fuzztest = false

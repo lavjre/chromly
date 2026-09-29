@@ -14,6 +14,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -76,24 +77,16 @@ def fuzzilli_unit() -> Unit:
 
 
 def libfuzzer_units() -> list[Unit]:
-    """2 unit libFuzzer (parser · wasm) — chỉ trả unit có binary tồn tại (out/libfuzzer)."""
-    outdir = paths.V8_ROOT / "out" / "libfuzzer"
+    """2 unit libFuzzer (parser · wasm) — v0 replay wrapper (V8 standalone thiếu engine).
+    Xem chromly/fuzz/replay.py + task M1-08 (engine thật)."""
     units = []
     for name, binname in LIBFUZZER_TARGETS.items():
-        binp = outdir / binname
-        if not binp.is_file():
+        if not (paths.V8_ROOT / "out" / "libfuzzer" / binname).is_file():
             continue
         base = FUZZ_DIR / name
-        corpus = base / "corpus"
-        artifacts = base / "artifacts"
-        corpus.mkdir(parents=True, exist_ok=True)
-        artifacts.mkdir(parents=True, exist_ok=True)
-        cmd = [
-            str(binp),
-            f"-artifact_prefix={artifacts}/",
-            "-print_final_stats=1",
-            str(corpus),
-        ]
+        (base / "corpus").mkdir(parents=True, exist_ok=True)
+        (base / "artifacts").mkdir(parents=True, exist_ok=True)
+        cmd = [sys.executable, "-m", "chromly.cli.app", "fuzz", "lfreplay", "--unit", name]
         units.append(Unit(name, "libfuzzer", cmd, LOGS_DIR / f"{name}.log"))
     return units
 
@@ -341,5 +334,13 @@ def run_fuzz_cmd(args) -> int:
             return 0
         print("usage: chromly fuzz corpus {sync|import|trim}")
         return 2
-    print("usage: chromly fuzz {up|down|status|watchdog|ingest|metrics|corpus}")
+    if cmd == "lfreplay":
+        from chromly.fuzz.replay import run_lfreplay
+
+        return run_lfreplay(
+            args.unit,
+            interval=getattr(args, "interval", 60.0),
+            once=getattr(args, "once", False),
+        )
+    print("usage: chromly fuzz {up|down|status|watchdog|ingest|metrics|corpus|lfreplay}")
     return 2
