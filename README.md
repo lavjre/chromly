@@ -7,7 +7,7 @@ Autonomous V8/Chrome bug-hunting system — fuzzing 24/7 (no LLM) + patch-diff i
 - **Quyết định kiến trúc:** [docs/adr/](docs/adr/) — không ADR, không merge.
 - **Runtime:** `runtime/` — symlink vào `~/.config/opencode/` (`persona.txt` + `opencode.json` + `skills/` + IDA MCP); case chạy trực tiếp trên VM (ADR-009).
 
-Trạng thái: **M0–M4 GREEN (2026-09-29/30)** — foundation · fuzz farm (1042 exec/s, watchdog, crash store, corpus, metrics) · intel track (watcher lag ~1h, agent review, KG) · triage pipeline + telemetry + prompt registry · case pipeline (**CASE-0001 → validated-crash, 11.6' · $0.06**) · MCP bridge `chromly-tools` (13 tool) · budget governor · dynamic scheduler · bench T3/T4 + gate · supervisor `chromly up/down`. M3-03 calibration: harness chạy bug #1 (đang build). Tiếp theo: **M5–M7 exploit lab**.
+Trạng thái: **M0–M4 GREEN (2026-09-29/30)** — foundation · fuzz farm (1042 exec/s, watchdog, crash store, corpus, metrics) · intel track (watcher lag ~1h, agent review, KG) · triage + telemetry + **calibration 5/5** (parser · regexp · wasm · 2×JIT) · case pipeline (**CASE-0001 → validated-crash, 11.6' · $0.06**) · MCP bridge (13 tool) · budget · scheduler · bench T1–T4 (T1 acc=1) · supervisor `chromly up/down` + systemd (supervisor · digest timer). Tiếp theo: **M5–M7 exploit lab**.
 
 ## Dev flow
 
