@@ -127,10 +127,14 @@ def _restart(state: dict, name: str, rec: dict, reason: str, now: float) -> dict
         return {"unit": name, "action": "degraded", "reason": reason}
 
     unit = None
-    for u in farm.default_units():
-        if u.name == name:
-            unit = u
-            break
+    if rec["type"] == "fuzzilli" and reason == "cooldown-recovery":
+        # recovery sau degraded: fresh start (corpus có thể hỏng → import abort loop)
+        unit = farm.fuzzilli_unit(fresh=True)
+    else:
+        for u in farm.default_units():
+            if u.name == name:
+                unit = u
+                break
     if unit is None:
         unit = farm.Unit(name, rec["type"], rec["cmd"], Path(rec["log"]))
     farm.up([unit])

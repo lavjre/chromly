@@ -57,7 +57,7 @@ def _env() -> dict[str, str]:
     return env
 
 
-def fuzzilli_unit() -> Unit:
+def fuzzilli_unit(fresh: bool = False) -> Unit:
     storage = FUZZ_DIR / "fuzzilli"
     storage.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -69,9 +69,13 @@ def fuzzilli_unit() -> Unit:
         "--statisticsExportInterval=1",
         "--logLevel=info",
     ]
-    if any(storage.iterdir()):
-        # fuzzilli từ chối storagePath non-empty nếu thiếu --resume/--overwrite
-        cmd.append("--resume")
+    if fresh:
+        # recovery: xoá storage cũ (corpus hỏng làm import abort signal 6)
+        cmd.append("--overwrite")
+    elif any(storage.iterdir()):
+        # fuzzilli từ chối storagePath non-empty nếu thiếu --resume/--overwrite.
+        # mode=full: import không minimize (nhanh hơn nhiều; corpus trên đĩa đã curated).
+        cmd += ["--resume", "--corpusImportMode=full"]
     cmd.append(str(d8_path()))
     return Unit("fuzzilli", "fuzzilli", cmd, LOGS_DIR / "fuzzilli.log")
 
