@@ -16,9 +16,32 @@ from pathlib import Path
 from chromly.fuzz import farm
 
 EVENTS_PATH = farm.FUZZ_DIR / "events.jsonl"
-HANG_S = float(os.environ.get("CHROMLY_WATCHDOG_HANG_S", "120"))
+HANG_S = float(os.environ.get("CHROMLY_WATCHDOG_HANG_S", "180"))
+HANG_BY_UNIT = {"fuzzilli": 300.0}
 CRASH_LOOP_N = 3
 CRASH_LOOP_WINDOW = 600.0
+DEGRADED_COOLDOWN = 1800.0
+FRESH_LOG_S = 120.0
+FRESH_STATS_S = 180.0
+
+
+def _fresh_activity(rec: dict, now: float, window: float) -> bool:
+    """Unit được coi là còn sống nếu log/stats mới ghi (tránh kill oan bursty/idle phase)."""
+    log = Path(rec.get("log", ""))
+    try:
+        if log.is_file() and now - log.stat().st_mtime < window:
+            return True
+    except OSError:
+        pass
+    if rec.get("type") == "fuzzilli":
+        stats = farm.FUZZ_DIR / "fuzzilli" / "stats"
+        try:
+            newest = max(stats.glob("*.json"), key=lambda p: p.stat().st_mtime, default=None)
+            if newest is not None and now - newest.stat().st_mtime < max(window, FRESH_STATS_S):
+                return True
+        except OSError:
+            pass
+    return False
 
 
 def append_event(event: str, unit: str, detail: dict | None = None) -> None:
@@ -96,6 +119,7 @@ def _restart(state: dict, name: str, rec: dict, reason: str, now: float) -> dict
     hist.append(now)
     if len(hist) >= CRASH_LOOP_N:
         rec["degraded"] = True
+        rec["degraded_at"] = now
         rec["restarts"] = hist
         state["units"][name] = rec
         farm._save_state(state)
@@ -128,6 +152,15 @@ def tick(now: float | None = None, hang_s: float | None = None) -> list[dict]:
 
     for name, rec in list(state["units"].items()):
         if rec.get("degraded"):
+            # tự hồi sau cooldown
+            if now - rec.get("degraded_at", 0) >= DEGRADED_COOLDOWN:
+                rec["degraded"] = False
+                rec["restarts"] = []
+                state["units"][name] = rec
+                farm._save_state(state)
+                append_event("recover", name, {"cooldown_s": DEGRADED_COOLDOWN})
+                actions.append(_restart(state, name, rec, "cooldown-recovery", now))
+                state = farm._load_state()
             continue
         alive = farm._alive(rec)
         if not alive:
@@ -139,7 +172,14 @@ def tick(now: float | None = None, hang_s: float | None = None) -> list[dict]:
         if ticks is None:
             continue
         prev = rec.get("watchdog") or {}
-        if "ticks" in prev and ticks <= prev["ticks"] and now - prev["ts"] >= hang_s:
+        unit_hang = HANG_BY_UNIT.get(name, hang_s)
+        if _fresh_activity(rec, now, min(FRESH_LOG_S, unit_hang)):
+            # còn hoạt động (log/stats mới) → reset baseline, không tính là hang
+            rec["watchdog"] = {"ticks": ticks, "ts": now}
+            state["units"][name] = rec
+            farm._save_state(state)
+            continue
+        if "ticks" in prev and ticks <= prev["ticks"] and now - prev["ts"] >= unit_hang:
             actions.append(_restart(state, name, rec, "hang", now))
             state = farm._load_state()
             continue
