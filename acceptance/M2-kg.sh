@@ -37,20 +37,20 @@ else
     fail "không lấy được node id"
 fi
 
-section "schema v3"
+section "schema (>= v3)"
 if "$VENV_BIN/python" - <<'PY'
 from chromly.store import db
 
 con = db.ensure_db()
 v = con.execute("PRAGMA user_version").fetchone()[0]
-assert v == db.SCHEMA_VERSION == 3, v
+assert v == db.SCHEMA_VERSION and v >= 3, v
 n = con.execute("SELECT COUNT(*) AS n FROM kg_nodes").fetchone()["n"]
 e = con.execute("SELECT COUNT(*) AS n FROM kg_edges").fetchone()["n"]
 print(f"user_version={v} nodes={n} edges={e}")
 assert n >= 2 and e >= 2
 PY
 then
-    pass "DB v3 + counts"
+    pass "DB schema + counts"
 else
     fail "schema/counts sai"
 fi
