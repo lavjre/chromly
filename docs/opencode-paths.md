@@ -18,9 +18,11 @@
 
 ## Ghi chú mount cho case container (M4)
 
-- `config` — mount `runtime/` (persona.txt · opencode.json) read-only; repo là source of truth,
-  `git pull` là cập nhật persona. Symlink hiện tại trên VM: `~/.config/opencode/{opencode.json,persona.txt}`
+- `config` — mount `runtime/` (persona.txt · opencode.json · skills/) read-only; repo là source of truth,
+  `git pull` là cập nhật persona. Symlink hiện tại trên VM: `~/.config/opencode/{opencode.json,persona.txt,skills}`
   → `~/chromly/runtime/...` (xem `runtime/personabuilder.sh`).
+- Skills: global discovery source của OpenCode V2 = `~/.config/opencode/skills` (docs: `.opencode/skills/<id>/SKILL.md`
+  hoặc `skills/` folder); 6 playbook ở `runtime/skills/` mount cùng `config` là đủ cho container.
 - `data` — mount volume riêng của container (session db + log per-case); không chia sẻ db với VM
   (tránh đụng session của operator), auth mount theo §4.6 khi cần.
 - `tmp` — trỏ `/tmp/opencode` trong container; đã pre-create trên VM.

@@ -20,6 +20,7 @@ command -v opencode >/dev/null 2>&1 || { echo "[X] opencode không có trong PAT
 mkdir -p "$CFG"
 ln -sfn "$HERE/persona.txt"   "$CFG/persona.txt"
 ln -sfn "$HERE/opencode.json" "$CFG/opencode.json"
+ln -sfn "$HERE/skills"        "$CFG/skills"   # global skill source (docs V2: ~/.config/opencode/skills)
 
 case "${1:-}" in
   -t|--tui) exec opencode ;;

@@ -75,6 +75,8 @@ Versioned `/v1/`, log mọi call, timeout mặc định 15'.
 
 `$v8-triage` · `$patch-diff-review` · `$repro-minimize` · `$exploit-primitive` · `$vrp-report` · `$ida-batch` (pattern dùng `ida.*` MCP + batch idalib cho job nặng)
 
+> Nguồn: `runtime/skills/<id>/SKILL.md` — v0 wired ở M0-08; từ M4 mọi thay đổi qua Prompt CI (G3, §8).
+
 ---
 
 ## Supervisor CLI (không cho agent — cho anh)
