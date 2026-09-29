@@ -61,3 +61,27 @@ def test_set_state_and_list(monkeypatch, tmp_path: Path) -> None:
     got = pipeline.load_case(meta["id"])
     assert got["state"] == "RUNNING"
     assert [c["id"] for c in pipeline.list_cases()] == [meta["id"]]
+
+
+def test_auto_case_tick(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    con = db.ensure_db()
+    with con:
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, state, source) "
+            "VALUES (?, 'x', 5, 'triaged', 'fuzzilli')",
+            ("b" * 64,),
+        )
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, state, source) "
+            "VALUES (?, 'x', 9, 'triaged', 'fixture')",
+            ("c" * 64,),
+        )
+    con.close()
+    monkeypatch.setattr(
+        runner, "run_case", lambda cid, **kw: {"status": "verdict", "verdict": "validated-crash"}
+    )
+    cid = runner.auto_case_tick()
+    assert cid == "CASE-0001"
+    # lần 2: đã có case (bỏ qua cả crash nguồn fixture) → None
+    assert runner.auto_case_tick() is None

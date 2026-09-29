@@ -180,6 +180,58 @@ def run_case(
     }
 
 
+AUTO_THRESHOLD = 4
+AUTO_SKIP_SOURCES = ("fixture", "acceptance")
+
+
+def auto_case_tick(threshold: int = AUTO_THRESHOLD) -> str | None:
+    """Tìm crash triaged score ≥ ngưỡng chưa có case → tạo + chạy (budget-gated trong run_case)."""
+    con = db.ensure_db()
+    try:
+        running = con.execute("SELECT COUNT(*) AS n FROM cases WHERE state = 'RUNNING'").fetchone()[
+            "n"
+        ]
+        if running:
+            return None
+        row = con.execute(
+            "SELECT c.hash FROM crashes c LEFT JOIN cases k ON k.crash_id = c.id "
+            "WHERE c.state = 'triaged' AND c.severity >= ? AND k.id IS NULL "
+            "AND COALESCE(c.source, '') NOT IN (?, ?) "
+            "ORDER BY c.severity DESC, c.id DESC LIMIT 1",
+            (threshold, *AUTO_SKIP_SOURCES),
+        ).fetchone()
+    finally:
+        con.close()
+    if row is None:
+        return None
+    meta = pipeline.new_case(row["hash"][:12], source="auto")
+    print(
+        f"[auto] case {meta['id']} ← crash {row['hash'][:12]} (score ≥{threshold})",
+        flush=True,
+    )
+    res = run_case(meta["id"])
+    print(
+        f"[auto] {meta['id']} → {res.get('status')} verdict={res.get('verdict')}",
+        flush=True,
+    )
+    return meta["id"]
+
+
+def run_case_auto(interval: float = 900.0) -> int:
+    """Aux loop: mỗi `interval` giây quét candidate mới và chạy case (1/lúc)."""
+    while True:
+        try:
+            cid = auto_case_tick()
+            if cid is None:
+                print(f"[{time.strftime('%H:%M:%S')}] auto-case: 0 candidate", flush=True)
+        except Exception as exc:  # noqa: BLE001 — loop dài hạn
+            print(
+                f"[{time.strftime('%H:%M:%S')}] auto-case lỗi: {type(exc).__name__}: {exc}",
+                flush=True,
+            )
+        time.sleep(interval)
+
+
 def run_case_cmd(args: argparse.Namespace) -> int:
     sub = getattr(args, "case_cmd", None)
     if sub == "new":
@@ -202,5 +254,7 @@ def run_case_cmd(args: argparse.Namespace) -> int:
         meta = pipeline.load_case(args.case_id)
         print(json.dumps(meta, ensure_ascii=False, indent=2))
         return 0
-    print("usage: chromly case {new|run|list|show}")
+    if sub == "auto":
+        return run_case_auto(interval=getattr(args, "interval", 900.0))
+    print("usage: chromly case {new|run|list|show|auto}")
     return 2

@@ -199,7 +199,7 @@ def run_watchdog(once: bool = False, interval: float = 60.0) -> int:
     while True:
         actions = tick()
         for a in actions:
-            print(f"watchdog: {a['unit']} {a['action']} ({a['reason']})")
+            print(f"watchdog: {a['unit']} {a['action']} ({a['reason']})", flush=True)
         if once:
             return 0
         time.sleep(interval)

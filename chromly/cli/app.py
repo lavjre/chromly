@@ -68,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
     p_rev = intel_sub.add_parser("review", help="agent review commit pending (M2-02)")
     p_rev.add_argument("--limit", type=int, default=5, help="số commit tối đa")
     p_rev.add_argument("--sha", default=None, help="review đúng 1 commit")
+    p_rev.add_argument("--loop", action="store_true", help="chạy mãi (aux supervisor)")
+    p_rev.add_argument("--interval", type=float, default=7200.0, help="giây giữa các lượt (loop)")
     p_var = intel_sub.add_parser("variants", help="sinh + chạy variant test (M2-03)")
     p_var.add_argument("--sha", default=None, help="mặc định: commit reviewed mới nhất")
     intel_sub.add_parser("status", help="trạng thái intel (M2-05)")
@@ -161,6 +163,8 @@ def main(argv: list[str] | None = None) -> int:
     case_sub.add_parser("list", help="liệt kê cases")
     p_cs = case_sub.add_parser("show", help="chi tiết case")
     p_cs.add_argument("case_id")
+    p_ca = case_sub.add_parser("auto", help="loop tự tạo + chạy case cho candidate (M4)")
+    p_ca.add_argument("--interval", type=float, default=900.0)
 
     for name, ms in STUBS.items():
         sub.add_parser(name, help=f"scheduled {ms}")

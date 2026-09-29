@@ -162,18 +162,35 @@ def run_review(sha: str) -> dict:
     }
 
 
-def run_intel_review(limit: int = 5, sha: str | None = None) -> int:
+def _review_batch(limit: int, sha: str | None) -> int:
+    from chromly.orchestrator.budget import tier
+
+    t = tier()
+    if t in ("day-cap", "exhausted"):
+        print(f"[{time.strftime('%H:%M:%S')}] budget {t} — skip review tick", flush=True)
+        return 0
     targets = pending_commits(limit=limit, sha=sha)
     if not targets:
-        print("intel review: không có commit pending")
+        print(f"[{time.strftime('%H:%M:%S')}] review: 0 pending", flush=True)
         return 0
     failed = 0
-    for t in targets:
-        res = run_review(t["sha"])
-        print(json.dumps(res, ensure_ascii=False))
+    for tgt in targets:
+        res = run_review(tgt["sha"])
+        print(json.dumps(res, ensure_ascii=False), flush=True)
         if res.get("status") not in ("reviewed",):
             failed += 1
     return 1 if failed else 0
+
+
+def run_intel_review(
+    limit: int = 5, sha: str | None = None, loop: bool = False, interval: float = 7200.0
+) -> int:
+    """Review commit pending. loop=True: chạy mãi mỗi `interval` giây (aux supervisor)."""
+    while True:
+        failed = _review_batch(limit=limit, sha=sha)
+        if not loop or sha:
+            return failed
+        time.sleep(interval)
 
 
 def add_review_args(parser: argparse.ArgumentParser) -> None:

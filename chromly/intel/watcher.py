@@ -163,6 +163,10 @@ def poll_once(since_days: int = 7, max_commits: int = 200) -> dict:
         rc, out = _git(["log", "-1", "--format=%cI", "FETCH_HEAD"], m)
         if rc == 0 and out.strip():
             result["lag_hours"] = parse_lag_hours(out.strip())
+        state["last_sha"] = last
+        state["last_poll"] = time.time()
+        state["last_lag_hours"] = result["lag_hours"]
+        _save_state(state)
         return result
 
     con = db.ensure_db()
@@ -223,10 +227,14 @@ def run_intel_cmd(args: argparse.Namespace) -> int:
                 res = poll_once(since_days=args.since_days, max_commits=args.max)
                 print(
                     f"[{datetime.now():%H:%M:%S}] seen={res['seen']} matched={res['matched']} "
-                    f"new={res['new']} lag={res['lag_hours']}h"
+                    f"new={res['new']} lag={res['lag_hours']}h",
+                    flush=True,
                 )
             except Exception as exc:  # noqa: BLE001 — loop dài hạn: log rồi thử lại
-                print(f"[{datetime.now():%H:%M:%S}] watch lỗi: {type(exc).__name__}: {exc}")
+                print(
+                    f"[{datetime.now():%H:%M:%S}] watch lỗi: {type(exc).__name__}: {exc}",
+                    flush=True,
+                )
             time.sleep(3600)
     if cmd == "status":
         from chromly.intel.status import run_status
@@ -235,7 +243,12 @@ def run_intel_cmd(args: argparse.Namespace) -> int:
     if cmd == "review":
         from chromly.intel.runner import run_intel_review
 
-        return run_intel_review(limit=getattr(args, "limit", 5), sha=getattr(args, "sha", None))
+        return run_intel_review(
+            limit=getattr(args, "limit", 5),
+            sha=getattr(args, "sha", None),
+            loop=getattr(args, "loop", False),
+            interval=getattr(args, "interval", 7200.0),
+        )
     if cmd == "variants":
         from chromly.intel.variants import run_variants_cmd
 

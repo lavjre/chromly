@@ -23,6 +23,8 @@ AUX_SPECS: dict[str, list[str]] = {
     "metrics": ["fuzz", "metrics", "--interval", "60"],
     "intel": ["intel", "watch"],
     "sched": ["sched", "loop", "--interval", "60"],
+    "review": ["intel", "review", "--limit", "2", "--loop", "--interval", "7200"],
+    "cases": ["case", "auto", "--interval", "900"],
 }
 
 

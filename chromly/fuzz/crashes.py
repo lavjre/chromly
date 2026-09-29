@@ -128,7 +128,7 @@ def run_ingest(once: bool = False, interval: float = 15.0) -> int:
     while True:
         for r in ingest_once():
             tag = "dup" if r["dup"] else "new"
-            print(f"crash [{tag}] {r['hash']} ← {r['unit']}")
+            print(f"crash [{tag}] {r['hash']} ← {r['unit']}", flush=True)
         if once:
             return 0
         time.sleep(interval)
