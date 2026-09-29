@@ -54,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
     p_ctrim = cor_sub.add_parser("trim", help="cull seed theo tuổi (dry-run mặc định)")
     p_ctrim.add_argument("--days", type=int, default=30)
     p_ctrim.add_argument("--apply", action="store_true", help="xoá thật")
+    p_lf = fuzz_sub.add_parser("lfreplay", help="replay loop cho V8 simple-fuzzer (M1-03 v0)")
+    p_lf.add_argument("--unit", required=True, choices=["libfuzzer-parser", "libfuzzer-wasm"])
+    p_lf.add_argument("--interval", type=float, default=60.0)
+    p_lf.add_argument("--once", action="store_true")
 
     p_intel = sub.add_parser("intel", help="intel track — watcher (§5.3, M2)")
     intel_sub = p_intel.add_subparsers(dest="intel_cmd")

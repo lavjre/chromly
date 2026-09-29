@@ -2,6 +2,7 @@
 /store/
 /cases/
 bench/runs/
+bench/latest.md
 research/local/
 logs/
 *.log

@@ -15,7 +15,7 @@ def test_fuzzilli_unit_cmd() -> None:
 
 def test_parse_execs(tmp_path: Path) -> None:
     log = tmp_path / "t.log"
-    log.write_text("Execs/second: 12.5\nnoise\nExecs/second:    345.67\n")
+    log.write_text("Execs / Second: 12.5\nnoise\nExecs / Second:    345.67\n")
     assert farm.parse_execs(log) == 345.67
 
 
