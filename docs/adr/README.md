@@ -9,10 +9,10 @@ Mỗi quyết định kiến trúc của chromly = 1 file, 10–20 dòng. Format
 | ADR | Quyết định | Trạng thái |
 |---|---|---|
 | [001](0001-opencode-persona-runtime.md) | OpenCode V2 + persona.txt làm agent runtime | Accepted |
-| 002 | Case container (docker) thay vì venv/process | Backfill M0 |
-| 003 | MCP bridge `chromly-tools` là boundary duy nhất agent ↔ hạ tầng | Backfill M0 |
-| 004 | Scheduler: tĩnh trước (M1), động theo metric sau (M4) | Backfill M0 |
-| 005 | Flash models + fallback free của opencode-go | Backfill M0 |
-| 006 | V8 first (thay vì JSC/SpiderMonkey) | Backfill M0 |
-| 007 | Calibration (đúng/sai) tách khỏi Benchmark (so sánh) | Backfill M0 |
-| 008 | 1 server IDA duy nhất (Hex-Rays official MCP) | Backfill M0 |
+| [002](0002-case-container-docker.md) | Case container (docker) thay vì venv/process | Accepted |
+| [003](0003-mcp-boundary.md) | MCP bridge `chromly-tools` là boundary duy nhất agent ↔ hạ tầng | Accepted |
+| [004](0004-scheduler-static-to-dynamic.md) | Scheduler: tĩnh trước (M1), động theo metric sau (M4) | Accepted |
+| [005](0005-flash-plus-free-fallback.md) | Flash models + fallback free của opencode-go | Accepted |
+| [006](0006-v8-first.md) | V8 first (thay vì JSC/SpiderMonkey) | Accepted |
+| [007](0007-calibration-vs-benchmark.md) | Calibration (đúng/sai) tách khỏi Benchmark (so sánh) | Accepted |
+| [008](0008-ida-official-mcp-single.md) | 1 server IDA duy nhất (Hex-Rays official MCP) | Accepted |
