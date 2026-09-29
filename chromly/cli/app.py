@@ -11,7 +11,6 @@ import sys
 from chromly import __version__
 
 STUBS: dict[str, str] = {
-    "doctor": "M0-03",
     "build": "M0-04",
     "up": "M1",
     "intel": "M2",
@@ -28,6 +27,10 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd")
 
     sub.add_parser("check", help="G0: import sanity + ruff + pytest")
+
+    p_doc = sub.add_parser("doctor", help="kiểm tra môi trường VM (§13 M0)")
+    p_doc.add_argument("--json", action="store_true", help="output cho máy đọc")
+
     for name, ms in STUBS.items():
         sub.add_parser(name, help=f"scheduled {ms}")
 
@@ -39,6 +42,10 @@ def main(argv: list[str] | None = None) -> int:
         from chromly.check import run_check
 
         return run_check()
+    if args.cmd == "doctor":
+        from chromly.doctor import run_doctor
+
+        return run_doctor(as_json=args.json)
     if args.cmd in STUBS:
         print(f"`chromly {args.cmd}` scheduled {STUBS[args.cmd]} — chưa có", file=sys.stderr)
         return 3
