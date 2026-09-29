@@ -7,6 +7,26 @@
       "description": "chromly case agent - Nini persona (persona.txt) as system prompt",
       "mode": "primary",
       "prompt": "{file:./persona.txt}"
+    },
+    "intel": {
+      "description": "intel lane - review patch-diff V8, sinh variant hypothesis (PLAN §5.3)",
+      "mode": "subagent",
+      "prompt": "{file:./persona.txt}"
+    },
+    "triage": {
+      "description": "triage lane - crash/ASAN → classify + score (PLAN §5.4)",
+      "mode": "subagent",
+      "prompt": "{file:./persona.txt}"
+    },
+    "analyst": {
+      "description": "analyst lane - root cause + source map (PLAN §4.3)",
+      "mode": "subagent",
+      "prompt": "{file:./persona.txt}"
+    },
+    "exploit-dev": {
+      "description": "exploit lane - primitive ladder + PoC (PLAN §5.9)",
+      "mode": "subagent",
+      "prompt": "{file:./persona.txt}"
     }
   },
   "mcp": {
