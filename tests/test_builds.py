@@ -7,11 +7,35 @@ from chromly.builds.v8 import recent_builds, run_build_cmd
 def test_configs_load() -> None:
     for name in bargs.CONFIG_NAMES:
         cfg = bargs.load_config(name)
-        assert cfg.target == "d8"
         assert cfg.gn_args["is_debug"] == "false"
         assert cfg.gn_args["use_lld"] == "true"
-        # v8_monolithic yêu cầu external startup data tắt (BUILD.gn assert)
+        if name == "libfuzzer":
+            assert cfg.target == "v8_fuzzers"
+        else:
+            assert cfg.target == "d8"
+
+
+def test_monolithic_trio_external_startup_data() -> None:
+    # v8_monolithic yêu cầu external startup data tắt (BUILD.gn assert)
+    for name in ("release", "dcheck", "asan"):
+        cfg = bargs.load_config(name)
+        assert cfg.gn_args["v8_monolithic"] == "true"
         assert cfg.gn_args["v8_use_external_startup_data"] == "false"
+
+
+def test_fuzzilli_flags() -> None:
+    cfg = bargs.load_config("fuzzilli")
+    assert cfg.gn_args["v8_fuzzilli"] == "true"
+    assert cfg.gn_args["sanitizer_coverage_flags"] == '"trace-pc-guard"'
+    assert cfg.gn_args["dcheck_always_on"] == "true"
+    assert "v8_monolithic" not in cfg.gn_args
+
+
+def test_libfuzzer_flags() -> None:
+    cfg = bargs.load_config("libfuzzer")
+    assert cfg.target == "v8_fuzzers"
+    assert cfg.gn_args["use_libfuzzer"] == "true"
+    assert cfg.gn_args["is_asan"] == "true"
 
 
 def test_asan_flags() -> None:

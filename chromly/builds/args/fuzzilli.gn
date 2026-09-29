@@ -1,0 +1,12 @@
+# chromly build config — fuzzilli REPRL (M1-01). Target: d8.
+# Theo fuzzilli Targets/V8/fuzzbuild.sh (fuzzilli commit 281729bf).
+# target: d8
+is_debug = false
+dcheck_always_on = true
+v8_static_library = true
+v8_enable_verify_heap = true
+v8_enable_partition_alloc = false
+v8_fuzzilli = true
+sanitizer_coverage_flags = "trace-pc-guard"
+target_cpu = "x64"
+use_lld = true
