@@ -114,6 +114,10 @@ def main(argv: list[str] | None = None) -> int:
     p_bc = bud_sub.add_parser("check", help="quyết định cho case mới")
     p_bc.add_argument("--est-cost", type=float, default=2.0)
 
+    p_mcp = sub.add_parser("mcp", help="MCP bridge chromly-tools (§5.7, M4)")
+    mcp_sub = p_mcp.add_subparsers(dest="mcp_cmd")
+    mcp_sub.add_parser("serve", help="stdio JSON-RPC server")
+
     for name, ms in STUBS.items():
         sub.add_parser(name, help=f"scheduled {ms}")
 
@@ -162,6 +166,10 @@ def main(argv: list[str] | None = None) -> int:
         from chromly.orchestrator.budget import run_budget_cmd
 
         return run_budget_cmd(args)
+    if args.cmd == "mcp":
+        from chromly.mcp.server import run_mcp_cmd
+
+        return run_mcp_cmd(args)
     if args.cmd == "telemetry":
         sub = getattr(args, "tel_cmd", None)
         if sub == "rollup":
