@@ -12,7 +12,6 @@ from chromly import __version__
 from chromly.builds.args import CONFIG_NAMES
 
 STUBS: dict[str, str] = {
-    "up": "M1",
     "override": "M4",
 }
 
@@ -120,9 +119,14 @@ def main(argv: list[str] | None = None) -> int:
     p_so.add_argument("mode", help="NORMAL|FUZZ_LEAN|BUILD_WINDOW|CASE_PRIORITY|RED")
     p_so.add_argument("--minutes", type=float, default=30.0)
     p_so.add_argument("--reason", default=None)
+    p_sl = sched_sub.add_parser("loop", help="tick loop cho supervisor")
+    p_sl.add_argument("--interval", type=float, default=60.0)
 
     p_bench = sub.add_parser("bench", help="bench suite T1–T4 + Prompt CI gate (§8, M4)")
     p_bench.add_argument("--suite", default="ci", choices=["ci", "t1", "t2", "t3", "t4"])
+
+    sub.add_parser("up", help="supervisor: farm + aux loops (M4-07)")
+    sub.add_parser("down", help="dừng farm + aux")
 
     p_mcp = sub.add_parser("mcp", help="MCP bridge chromly-tools (§5.7, M4)")
     mcp_sub = p_mcp.add_subparsers(dest="mcp_cmd")
@@ -197,6 +201,10 @@ def main(argv: list[str] | None = None) -> int:
         from chromly.bench.suite import run_bench_cmd
 
         return run_bench_cmd(args)
+    if args.cmd in ("up", "down"):
+        from chromly.orchestrator.supervisor import run_supervisor_cmd
+
+        return run_supervisor_cmd(args)
     if args.cmd == "mcp":
         from chromly.mcp.server import run_mcp_cmd
 

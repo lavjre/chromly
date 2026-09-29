@@ -212,5 +212,11 @@ def run_sched_cmd(args) -> int:
         res = set_override(args.mode, float(args.minutes) * 60, reason=args.reason or "manual")
         print(json.dumps(res))
         return 0
-    print("usage: chromly sched {status|eval|override}")
+    if sub == "loop":
+        interval = float(getattr(args, "interval", 60.0))
+        while True:
+            res = tick()
+            print(json.dumps(res, ensure_ascii=False), flush=True)
+            time.sleep(interval)
+    print("usage: chromly sched {status|eval|override|loop}")
     return 2

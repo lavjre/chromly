@@ -18,7 +18,7 @@ def test_no_args_prints_help(capsys: pytest.CaptureFixture) -> None:
 
 
 def test_stub_exit_code(capsys: pytest.CaptureFixture) -> None:
-    for cmd, ms in (("up", "M1"), ("cases", "M4")):
+    for cmd, ms in (("override", "M4"),):
         assert main([cmd]) == 3
         err = capsys.readouterr().err
         assert f"scheduled {ms}" in err
