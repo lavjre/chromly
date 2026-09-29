@@ -10,7 +10,7 @@ from pathlib import Path
 
 from chromly import paths
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS crashes (
@@ -164,6 +164,14 @@ CREATE TABLE IF NOT EXISTS calibration (
     coverage_note TEXT,
     last_fail     TEXT
 );
+
+CREATE TABLE IF NOT EXISTS scheduler_decisions (
+    ts            TEXT,
+    from_mode     TEXT,
+    to_mode       TEXT,
+    reason        TEXT,
+    snapshot_json TEXT
+);
 """
 
 # Migration theo bước: {version đích: [câu SQL]}
@@ -247,6 +255,15 @@ _MIGRATIONS: dict[int, list[str]] = {
             difficulty    INTEGER,
             coverage_note TEXT,
             last_fail     TEXT
+        )""",
+    ],
+    5: [
+        """CREATE TABLE IF NOT EXISTS scheduler_decisions (
+            ts            TEXT,
+            from_mode     TEXT,
+            to_mode       TEXT,
+            reason        TEXT,
+            snapshot_json TEXT
         )""",
     ],
 }

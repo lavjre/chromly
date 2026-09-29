@@ -13,7 +13,6 @@ from chromly.builds.args import CONFIG_NAMES
 
 STUBS: dict[str, str] = {
     "up": "M1",
-    "cases": "M4",
     "bench": "M4",
     "override": "M4",
 }
@@ -114,9 +113,31 @@ def main(argv: list[str] | None = None) -> int:
     p_bc = bud_sub.add_parser("check", help="quyết định cho case mới")
     p_bc.add_argument("--est-cost", type=float, default=2.0)
 
+    p_sched = sub.add_parser("sched", help="dynamic scheduler — modes/override (§6.5, M4)")
+    sched_sub = p_sched.add_subparsers(dest="sched_cmd")
+    sched_sub.add_parser("status", help="mode hiện tại + snapshot")
+    sched_sub.add_parser("eval", help="một lượt đánh giá (tick)")
+    p_so = sched_sub.add_parser("override", help="override mode có thời hạn")
+    p_so.add_argument("mode", help="NORMAL|FUZZ_LEAN|BUILD_WINDOW|CASE_PRIORITY|RED")
+    p_so.add_argument("--minutes", type=float, default=30.0)
+    p_so.add_argument("--reason", default=None)
+
     p_mcp = sub.add_parser("mcp", help="MCP bridge chromly-tools (§5.7, M4)")
     mcp_sub = p_mcp.add_subparsers(dest="mcp_cmd")
     mcp_sub.add_parser("serve", help="stdio JSON-RPC server")
+
+    p_case = sub.add_parser("case", help="case pipeline — new/run/list/show (§5.6, M4)")
+    case_sub = p_case.add_subparsers(dest="case_cmd")
+    p_cn = case_sub.add_parser("new", help="tạo case từ crash")
+    p_cn.add_argument("--crash", default=None, help="hash prefix của crash")
+    p_cn.add_argument("--source", default="manual")
+    p_cr = case_sub.add_parser("run", help="chạy agent cho case")
+    p_cr.add_argument("case_id")
+    p_cr.add_argument("--wall", type=float, default=480.0, help="wall tối đa (phút)")
+    p_cr.add_argument("--resume", default=None, help="session id để resume")
+    case_sub.add_parser("list", help="liệt kê cases")
+    p_cs = case_sub.add_parser("show", help="chi tiết case")
+    p_cs.add_argument("case_id")
 
     for name, ms in STUBS.items():
         sub.add_parser(name, help=f"scheduled {ms}")
@@ -166,10 +187,18 @@ def main(argv: list[str] | None = None) -> int:
         from chromly.orchestrator.budget import run_budget_cmd
 
         return run_budget_cmd(args)
+    if args.cmd == "sched":
+        from chromly.orchestrator.scheduler import run_sched_cmd
+
+        return run_sched_cmd(args)
     if args.cmd == "mcp":
         from chromly.mcp.server import run_mcp_cmd
 
         return run_mcp_cmd(args)
+    if args.cmd == "case":
+        from chromly.case.runner import run_case_cmd
+
+        return run_case_cmd(args)
     if args.cmd == "telemetry":
         sub = getattr(args, "tel_cmd", None)
         if sub == "rollup":
