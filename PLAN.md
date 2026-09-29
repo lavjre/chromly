@@ -1,5 +1,6 @@
-# chromly — Master Plan v1.6
+# chromly — Master Plan v1.7
 
+> v1.6 → v1.7: thêm **§14 Build & Delivery — agent-driven development** (roles · task files · gates G0–G4 · DoD · repo layout · task boards M0–M8 · nhịp supervised→autonomous · fail protocol · build budget); kèm `build/` protocol + task M0-01; §0 thêm dòng Build; fix tool count 28→30.
 > v1.5 → v1.6: **Phụ lục A → Chương 1 — Research Philosophy** (workflows + strategy + hiến pháp anti-patterns); thêm **Alert engine**, **KG query layer**, **calibration metadata**, **human override**, **KPI rubric**, **evolution v2–v4**; benchmark thêm **agent topology**; bỏ số capacity kinh tế cho tới M4.
 > v1.4 → v1.5: nhận review kỹ thuật ngoài — thêm **Telemetry & Dashboard**, **Benchmark framework**, **Knowledge layer** (graph + notebook), **Prompt CI**, **Dynamic scheduler**, **ADR**; roadmap giãn **8–10 tuần** + tách **M5 Primitive / M6 Arb Read / M7 Arb RW**; kinh tế đổi thành **hypothesis** (đo lại sau M4).
 > v1.3 → v1.4: thêm `TOOLS.md`; bỏ `ida.batch` khỏi chromly-tools.
@@ -26,7 +27,9 @@
 
 **Timeline:** M0–M4 = **8–10 tuần** (integration buffer ~30% đã tính) tới "crash → PoC không cần tay". M5–M7 exploit từ tuần 10+. M8 vận hành 24/7 liên tục.
 
-**Tool surface:** 17 callable (built-in + IDA MCP) hôm nay → 28 ở M3 — chi tiết `TOOLS.md`.
+**Tool surface:** 17 callable (built-in + IDA MCP) hôm nay → 30 ở M3 — chi tiết `TOOLS.md`.
+
+**Build:** agent-driven — task files + acceptance gates (§14); máy implement, anh duyệt.
 
 ---
 
@@ -531,6 +534,7 @@ KPI sống trong dashboard (§7.2); mỗi tháng review — đổi target phải
 
 - **Cap (đặt trước, chỉnh sau):** case $2 · ngày $2.5 · tháng $55 (chừa 10% dưới limit $60). Governor tôn trọng cửa sổ rolling: 5h ($12) và tuần ($30) — chạm → rơi về **model free** (`longcat-2.5-preview-free` → `space-bunny-free`), chỉ nhận case score cao; free chết → plan B `glm-5.3-flash`. **Có fallback free = không bao giờ đứng máy vì limit.**
 - **Measurement plan (M4):** sau 2 tuần vận hành + 10 case thật, tính lại từ bảng `runs` (tokens/case thực, wall thực, refusal rate) → sửa caps, sửa budget §6, viết ADR cập nhật. **Capacity: chưa đưa con số — chỉ có số sau M4.**
+- **Build phase (M0–M4):** cap riêng **$1.5/ngày** cho builder agent (hypothesis — đo tuần 1 rồi chỉnh), chung plan Go, không để build đốt hết budget của case hunt. Build runs ghi cùng ledger `runs` (audit từng task tốn bao nhiêu).
 - Cost target M4: <$2/case (đo thật, không phải đoán).
 
 ---
@@ -549,9 +553,11 @@ KPI sống trong dashboard (§7.2); mỗi tháng review — đổi target phải
 
 **Timeline: 8–10 tuần tới M4 (integration buffer ~30% đã tính — coding nhanh, integration chậm).**
 
+**Nguồn việc:** task boards §14.7 — architect (Nini) viết task files trước khi builder chạy mỗi milestone; task file là hợp đồng, không có file = không code.
+
 | Mốc | Tuần | Acceptance (đo được) |
 |---|---|---|
-| M0 Foundation & Doctor | 1 | `chromly doctor` xanh (swap, slices, docker, opencode, IDA, disk); build sạch ASAN d8 ≤90' với -j6; persona + resume `-s` OK; `debug paths` chốt; **IDA MCP handshake OK**; ADR-001..008 backfill |
+| M0 Foundation & Doctor | 1 | `chromly doctor` xanh (swap, slices, docker, opencode, IDA, disk); build sạch ASAN d8 ≤90' với -j6; persona + resume `-s` OK; `debug paths` chốt; **IDA MCP handshake OK**; ADR-001..008 backfill; repo scaffold + `chromly check` chạy (G0) |
 | M1 Fuzz farm | 2–3 | ≥300 exec/s tổng, 24h liên tục, 0 leak; crash → store <5'; watchdog test pass |
 | M2 Intel track | 3–5 | watcher lag <24h; ≥3 review/ngày tự động; ≥1 variant test sinh + chạy; KG nhận commit nodes |
 | M3 Triage & Calibration | 5–7 | 5/5 ground-truth bắt được; FP filter ≥90%; score đúng thứ tự; **telemetry + dashboard v1 lên sóng**; prompt_registry hoạt động |
@@ -588,7 +594,96 @@ KPI sống trong dashboard (§7.2); mỗi tháng review — đổi target phải
 
 ---
 
-## 14. Còn lại (nhỏ, không chặn M0)
+## 14. Build & Delivery — agent-driven development
+
+Toàn bộ code của chromly được viết bởi **builder agent** (OpenCode chạy trên VM, workdir = repo clone) theo spec của plan này. Máy implement — acceptance script làm trọng tài — anh duyệt.
+
+### 14.1 Vai trò
+
+| Vai | Ai | Trách nhiệm |
+|---|---|---|
+| Operator | anh | khoá scope · duyệt commit · gỡ BLOCKED · override |
+| Builder | OpenCode agent trên VM (không phải case container — có sudo) | implement theo task file · chạy acceptance · commit kèm evidence |
+| Acceptance | `acceptance/Mx.sh` | trọng tài khách quan — pass/fail, không thương lượng |
+| Architect | Nini (chat) | viết task files · cập nhật plan (version + ADR) · review thiết kế |
+| Archivist | builder + tay | ADR · KG ingest · changelog |
+
+### 14.2 Work unit — task file
+
+Mỗi task = 1 file `build/tasks/Mx-NN.md` (~nửa trang): **Deliverable · Files · Acceptance (lệnh cụ thể) · Evidence · Out-of-scope · Phụ thuộc**.
+- Không có task file = không code (hotfix operator giao trực tiếp phải ghi lại thành task sau).
+- 1 task = 1 commit, message `Mx-NN: <what>`. Không gộp, không tách.
+
+### 14.3 Gates (trước mọi commit)
+
+| Gate | Nội dung | Ai |
+|---|---|---|
+| G0 check | `chromly check` — ruff + unit tests + import sanity | builder, tự động |
+| G1 unit | test logic thuần (dedup hash · scoring · scheduler controller · budget governor) | builder |
+| G2 acceptance | `acceptance/Mx.sh` của milestone | builder |
+| G3 prompt | đổi persona/skill/plugin → Prompt CI (§8) | tự động |
+| G4 ADR | đổi kiến trúc / thêm dependency → ADR bắt buộc (§9) | builder viết, operator duyệt |
+
+### 14.4 Definition of Done
+
+Task chỉ "done" khi: chạy được bằng lệnh trong task · acceptance pass · evidence kèm commit (lệnh + output chính) · không đụng file ngoài danh sách · không thêm dep nếu không ADR · `runtime/` chỉ sửa qua task có G3.
+
+### 14.5 Repo layout (module ownership)
+
+```
+chromly/
+├── PLAN.md · TOOLS.md · README.md
+├── chromly/                  # package Python 3.12 (supervisor)
+│   ├── orchestrator/         # queue · budget governor · resume · ledger · watchdogs   M0–M4
+│   ├── builds/               # V8 build rig + cache                                    M0
+│   ├── fuzz/                 # fuzzilli farm · libFuzzer wrappers · corpus             M1
+│   ├── intel/                # commit watcher · filter · diff runner                   M2
+│   ├── knowledge/            # KG ingest · query layer · notebook                      M2–M3
+│   ├── telemetry/            # collect · rollup · alerts · reports                     M3
+│   ├── triage/               # repro · minimize · dedup · classify · score             M3
+│   ├── bench/                # suite T1–T4 · prompt CI runner                          M4
+│   ├── case/                 # case pipeline (opencode run loop)                       M4
+│   ├── mcp/                  # chromly-tools MCP server                                M4
+│   ├── exploit/              # d8 harness · ladder scripts · verifier                  M5–M7
+│   └── cli/                  # chromly up|status|doctor|build|bench|override|check
+├── build/                    # tasks/ · BLOCKED.md · README.md (protocol)
+├── acceptance/               # Mx.sh — trọng tài từng milestone
+├── infra/                    # bootstrap.sh · Dockerfiles · systemd units
+├── runtime/                  # mount → /root/.config/opencode (persona · agents · skills · plugin)
+├── docs/adr/                 # ADR
+├── bench/                    # suite data (runs/ gitignored)
+└── cases/ · store/ · research/    # runtime data (gitignored)
+```
+
+### 14.6 Nhịp làm việc
+
+- **M0–M1 supervised** — anh review từng commit; chuẩn trước, nhanh sau.
+- **M2+ autonomous** — builder chạy liên tục; acceptance là cổng chính; anh review hàng ngày.
+- **Fail protocol:** blocked >30' → viết `build/BLOCKED.md` (câu hỏi + đường đã thử) → báo operator → **chuyển task khác**, không ngồi chờ.
+- **Parallel:** mặc định 1 lane builder. Lane 2 chỉ khi 2 module độc lập và file-owner ghi rõ trong task.
+- **Context cho builder:** PLAN phần liên quan + task file + code trong Files + acceptance — không nạp cả plan.
+- Builder chạy **trên VM** (có sudo để cài đặt) — policy deny `sudo *` của case container **không áp dụng** ở đây.
+
+### 14.7 Task boards (skeleton — architect chi tiết hoá trước mỗi M)
+
+| M | Tasks chính | ~số task |
+|---|---|---|
+| M0 | bootstrap · doctor/check · build rig · opencode smoke · IDA handshake · repo scaffold · ADR backfill | 7 |
+| M1 | fuzzilli farm · libFuzzer wrappers · watchdog · crash store · corpus pipeline · metrics v0 | 6–8 |
+| M2 | watcher · intel runner · KG ingest · variant test gen · report cơ bản | 5–7 |
+| M3 | triage stages · calibration harness · telemetry v1 + alert engine · prompt registry · dashboard v1 | 7–9 |
+| M4 | case runner · MCP bridge · budget governor · dynamic scheduler · bench T1–T4 · prompt CI | 7–9 |
+| M5–M7 | d8 harness · primitive ladder · verifier · exploit notes/report | 4–6 mỗi M |
+| M8 | dashboard hoàn chỉnh · weekly digest · hardening | 4–6 |
+
+### 14.8 Chi phí build
+
+- Builder đốt chung ngân sách Go (§11). Cap build M0–M4: **$1.5/ngày** (hypothesis — đo tuần 1 rồi chỉnh).
+- Build runs ghi cùng ledger `runs` — audit được từng task tốn bao nhiêu.
+
+---
+
+## 15. Còn lại (nhỏ, không chặn M0)
 
 - **LUKS** khi cài Ubuntu — đề xuất: có nếu không phiền passphrase mỗi boot; không trả lời → mặc định không, thêm sau được.
 - **Snapshot VM weekly ×4** — bật khi host dư ≥60 GB; không dư thì snapshot trước mỗi milestone.
