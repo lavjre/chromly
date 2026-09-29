@@ -25,7 +25,7 @@
 
 ## Tầng 1 — MCP `ida` — Hex-Rays IDA MCP chính chủ (✅ đã wire trong `runtime/opencode.json`)
 
-Server: `HexRaysSA/ida-mcp` (IDA Nexus, multi-client share DB). Chạy trong case container:
+Server: `HexRaysSA/ida-mcp` (IDA Nexus, multi-client share DB). Chạy trực tiếp trên VM (case process — ADR-009):
 `uvx ida-mcp stdio --agent=opencode`.
 
 | Tool | Chức năng | chromly dùng vào |
@@ -37,7 +37,7 @@ Server: `HexRaysSA/ida-mcp` (IDA Nexus, multi-client share DB). Chạy trong cas
 | `ida.save_database` | Save .i64 — persist rename/comment/type/patch | Cuối phiên IDA của case |
 | `ida.close_database` | Nhả lease của session này (không đụng client khác); chờ shutdown an toàn nếu là lease cuối | Đóng phiên khi case xong |
 
-Serialize: 1 phiên IDA nặng/lúc (RAM), nice 5, trong slice `case`. Fallback khi container vướng license: `uvx ida-mcp http --host 127.0.0.1 --port 8737` trên VM rồi container trỏ vào.
+Serialize: 1 phiên IDA nặng/lúc (RAM), nice 5, trong slice `case`. Fallback khi cần GUI/đa client: `uvx ida-mcp http --host 127.0.0.1 --port 8737` trên VM.
 
 ---
 

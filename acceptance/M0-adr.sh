@@ -4,7 +4,7 @@ source "$(cd "$(dirname "$0")" && pwd)/lib.sh"
 cd "$REPO_ROOT"
 
 N=0
-for f in docs/adr/000[2-8]-*.md; do
+for f in docs/adr/000[2-9]-*.md; do
     [[ -f "$f" ]] || continue
     N=$((N + 1))
     miss=""
@@ -17,14 +17,14 @@ for f in docs/adr/000[2-8]-*.md; do
         fail "$(basename "$f") thiếu:$miss"
     fi
 done
-[[ $N -eq 7 ]] && pass "đủ 7 file ADR (002–008)" || fail "chỉ có $N/7 file ADR"
+[[ $N -eq 8 ]] && pass "đủ 8 file ADR (002–009)" || fail "chỉ có $N/8 file ADR"
 
 missing=""
-for n in 002 003 004 005 006 007 008; do
+for n in 002 003 004 005 006 007 008 009; do
     grep -q "\[$n\]" docs/adr/README.md || missing="$missing $n"
 done
 if [[ -z "$missing" ]]; then
-    pass "README liệt kê 002–008"
+    pass "README liệt kê 002–009"
 else
     fail "README thiếu:$missing"
 fi

@@ -1,6 +1,6 @@
 # ADR-002 — Case container (docker) thay vì venv/process
 
-**Trạng thái:** Accepted · **Ngày:** 2026-09-29 · **Milestone:** M0
+**Trạng thái:** Superseded by [ADR-009](0009-case-direct-on-vm.md) · **Ngày:** 2026-09-29 · **Milestone:** M0
 
 ## Bối cảnh
 

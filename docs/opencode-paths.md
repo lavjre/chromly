@@ -1,7 +1,7 @@
-# OpenCode paths — chốt cho M4 (case container)
+# OpenCode paths — chốt cho M4 (case runner, direct on VM — ADR-009)
 
 > Sinh từ `opencode debug paths` trên VM (opencode v2.0.18, 2026-09-29) — task M0-05.
-> Case container (M4) mount các path này theo `runtime/` (PLAN §4.6).
+> Case runner (M4, trực tiếp trên VM — ADR-009) dùng các path này; `runtime/` là config qua symlink (PLAN §4.6).
 
 | Key | Path |
 |---|---|
@@ -16,18 +16,16 @@
 | repos | `/home/lavjre/.local/share/opencode/repos` |
 | db | `/home/lavjre/.local/share/opencode/opencode.db` |
 
-## Ghi chú mount cho case container (M4)
+## Ghi chú cho case runner (M4 — direct, ADR-009)
 
-- `config` — mount `runtime/` (persona.txt · opencode.json · skills/) read-only; repo là source of truth,
-  `git pull` là cập nhật persona. Symlink hiện tại trên VM: `~/.config/opencode/{opencode.json,persona.txt,skills}`
+- `config` — `runtime/` symlink vào `~/.config/opencode` (persona · opencode.json · skills); repo là source of truth,
+  `git pull` là cập nhật. Symlink hiện tại: `~/.config/opencode/{opencode.json,persona.txt,skills}`
   → `~/chromly/runtime/...` (xem `runtime/personabuilder.sh`).
 - Skills: global discovery source của OpenCode V2 = `~/.config/opencode/skills` (docs: `.opencode/skills/<id>/SKILL.md`
-  hoặc `skills/` folder); 6 playbook ở `runtime/skills/` mount cùng `config` là đủ cho container.
-- `data` — mount volume riêng của container (session db + log per-case); không chia sẻ db với VM
-  (tránh đụng session của operator), auth mount theo §4.6 khi cần.
-- `tmp` — trỏ `/tmp/opencode` trong container; đã pre-create trên VM.
-- Auth: `opencode auth` trên VM user; path auth lấy từ `opencode debug paths` + kiểm tra `auth list`
-  (bản v2.0.18 lưu auth qua service, không có file `auth.json` rời — xác nhận lại khi dựng image M4).
+  hoặc `skills/` folder); 6 playbook ở `runtime/skills/` — symlink sẵn, case process nhận trực tiếp.
+- `data` — dùng chung db/log của VM user; session per-case tách bằng session id riêng (`opencode run -s <id>`).
+- `tmp` — `/tmp/opencode` trên VM (đã pre-create; build/triage/IDA smoke dùng).
+- Auth: `opencode auth` trên VM user; case process dùng cùng auth sẵn có (v2.0.18 lưu auth qua service — không cần mount file).
 
 ## Evidence M0-05
 

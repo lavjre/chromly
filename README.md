@@ -5,9 +5,9 @@ Autonomous V8/Chrome bug-hunting system — fuzzing 24/7 (no LLM) + patch-diff i
 - **Kế hoạch:** [PLAN.md](PLAN.md) — đọc **Chương 1 (§1) Research Philosophy** trước, rồi mới tới kiến trúc.
 - **Tool inventory:** [TOOLS.md](TOOLS.md) — 30 callable surfaces at M3.
 - **Quyết định kiến trúc:** [docs/adr/](docs/adr/) — không ADR, không merge.
-- **Runtime:** `runtime/` — mount → `/root/.config/opencode/` trong case container (`persona.txt` + `opencode.json` + IDA MCP).
+- **Runtime:** `runtime/` — symlink vào `~/.config/opencode/` (`persona.txt` + `opencode.json` + `skills/` + IDA MCP); case chạy trực tiếp trên VM (ADR-009).
 
-Trạng thái: **M0-ready** (docs + runtime config). Supervisor / fuzz farm / triage code bắt đầu từ M0.
+Trạng thái: **M0 DONE (2026-09-29)** — doctor xanh · build rig (ASAN d8 43.9') · persona+resume · IDA handshake · skills runtime · 8/8 task acceptance GREEN. Tiếp theo: **M1 fuzz farm**.
 
 ## Dev flow
 

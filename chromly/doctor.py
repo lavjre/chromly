@@ -77,7 +77,9 @@ def check_slices() -> Check:
 def check_docker() -> Check:
     docker = shutil.which("docker")
     if not docker:
-        return Check("docker", FAIL, "không có docker", FIX_BOOTSTRAP)
+        return Check(
+            "docker", INFO, "không cài — không bắt buộc (ADR-009: case chạy trực tiếp trên VM)"
+        )
     _, out = _rc([docker, "--version"])
     ver = out.split(",")[0] if out else "?"
     try:
@@ -85,7 +87,7 @@ def check_docker() -> Check:
     except KeyError:
         in_group = False
     if in_group:
-        return Check("docker", OK, ver)
+        return Check("docker", OK, f"{ver} (không dùng cho case — ADR-009)")
     return Check(
         "docker", WARN, f"{ver}; user chưa trong group docker", "logout/in hoặc newgrp docker"
     )

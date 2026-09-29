@@ -1,5 +1,6 @@
-# chromly — Master Plan v1.7
+# chromly — Master Plan v1.8
 
+> v1.7 → v1.8: **ADR-009 — case chạy trực tiếp trên VM** (supersede ADR-002): bỏ docker khỏi đường chạy case (§0 · §3 · §4.5 · §4.6 · §5.6 · §5.8 · §6.1 · §6.3 · §10.2 · §12 · §13 · §14.5); thêm task **M0-08 skills runtime**; M0 đóng 2026-09-29.
 > v1.6 → v1.7: thêm **§14 Build & Delivery — agent-driven development** (roles · task files · gates G0–G4 · DoD · repo layout · task boards M0–M8 · nhịp supervised→autonomous · fail protocol · build budget); kèm `build/` protocol + task M0-01; §0 thêm dòng Build; fix tool count 28→30.
 > v1.5 → v1.6: **Phụ lục A → Chương 1 — Research Philosophy** (workflows + strategy + hiến pháp anti-patterns); thêm **Alert engine**, **KG query layer**, **calibration metadata**, **human override**, **KPI rubric**, **evolution v2–v4**; benchmark thêm **agent topology**; bỏ số capacity kinh tế cho tới M4.
 > v1.4 → v1.5: nhận review kỹ thuật ngoài — thêm **Telemetry & Dashboard**, **Benchmark framework**, **Knowledge layer** (graph + notebook), **Prompt CI**, **Dynamic scheduler**, **ADR**; roadmap giãn **8–10 tuần** + tách **M5 Primitive / M6 Arb Read / M7 Arb RW**; kinh tế đổi thành **hypothesis** (đo lại sau M4).
@@ -13,9 +14,9 @@
 
 ## 0. Executive view
 
-**chromly là gì:** hệ thống tự hành hunt bug V8/Chrome — fuzzing chạy 24/7 không tốn LLM; intel track bòn patch-diff hằng ngày; khi có candidate, một case container chạy agent (OpenCode + persona Nini) để đi từ crash → root cause → PoC draft, không cần tay người.
+**chromly là gì:** hệ thống tự hành hunt bug V8/Chrome — fuzzing chạy 24/7 không tốn LLM; intel track bòn patch-diff hằng ngày; khi có candidate, một case process chạy agent (OpenCode + persona Nini) để đi từ crash → root cause → PoC draft, không cần tay người.
 
-**Chạy ở đâu:** Ubuntu VM 8c/16GB/200GB. Fuzz + build + case container sống chung — **scheduler theo metric là phần sống còn của thiết kế** (§6).
+**Chạy ở đâu:** Ubuntu VM 8c/16GB/200GB. Fuzz + build + case process sống chung — **scheduler theo metric là phần sống còn của thiết kế** (§6).
 
 **Ra gì:** `cases/` đầy đủ, `runs.tsv` ledger, dashboard `chromly status`, và khi có finding thật — draft VRP report + PoC.
 
@@ -146,10 +147,10 @@ UBUNTU VM (8 vCPU · 16 GB · 200 GB)
 │               │ candidate                                            │
 │               ▼                                                      │
 │  ┌──────────────────────────┐  MCP   ┌──────────────────────────┐    │
-│  │ MCP BRIDGE chromly-tools │◄──────►│ CASE CONTAINER (docker)  │    │
+│  │ MCP BRIDGE chromly-tools │◄──────►│ CASE RUNNER (VM direct)  │    │
 │  │ case/crash/repro/build/  │        │ opencode + persona.txt   │    │
 │  │ fuzz/store/runs          │        │ agents · skills · plugin │    │
-│  └──────────────────────────┘        │ /case mount · IDA 9.4    │    │
+│  └──────────────────────────┘        │ /case dir · IDA 9.4      │    │
 │                                      └────────────┬─────────────┘    │
 │               ┌───────────────────────┐           │ VERDICT.md       │
 │               │ EXPLOIT LAB           │◄──────────┘                  │
@@ -206,7 +207,7 @@ M0 smoke test: shape `agent.<name>.prompt {file:...}` đa agent trên v2.x; fail
 ### 4.5 Plugin `chromly.ts`
 
 - `tool.execute.after` → nudge 10/30' "split lanes now" (thay `nudge.py`).
-- `tool.execute.before` → guard scope container.
+- `tool.execute.before` → guard scope `/case` (ADR-009).
 - `permission.hook("evaluate")` → policy: deny `sudo *` / `rm -rf /*`; allow trong `/case`.
 - `session.hook("context")` → nhắc budget/format khi gần cạn.
 - `event.subscribe()` → `log.jsonl` + **telemetry events** (§7.2).
@@ -224,7 +225,7 @@ opencode serve → /api/session/{id}/wait · /interrupt · /compact · stats   #
 - VERDICT.md (validated-crash | no-bug | needs-human | report-draft) → stop container.
 - HELP.md → dừng, gọi anh.
 - Refusal/errors: `retry` hook → swap model → fresh session.
-- Auth: `opencode auth` trên VM user; mount config/data ro vào container (paths từ `opencode debug paths`, chốt ở M0).
+- Auth: `opencode auth` trên VM user; case chạy trực tiếp cùng user/config (ADR-009) — paths chốt ở M0.
 
 ---
 
@@ -281,7 +282,7 @@ crash → repro ×5 trên build sạch (loại flaky) → minimize (d8→creduce
 
 ```
 NEW → BUNDLED (case dir: repro, asan, symbols, notes/, src-ref, triage.md, brief.md ← top-k related từ knowledge layer §7.3)
-    → RUNNING (container opencode; resumes; nudges; budget)
+    → RUNNING (case process trên VM — ADR-009; resumes; nudges; budget)
     → VERDICT | HELP | TIMEOUT
     → ARCHIVED (nén artifacts, ghi runs.tsv, ingest knowledge.yaml, học vào calibration nếu đặc biệt)
 ```
@@ -309,7 +310,7 @@ Boundary duy nhất agent ↔ hạ tầng. Versioned (`/v1/`), log mọi call, t
 
 - Server chính chủ **`HexRaysSA/ida-mcp`** (build trên **IDA Nexus** — nhiều client share/operate chung một IDA database).
 - Cài: `uvx ida-hcli mcp install` (GUI plugin + agent plugin) — requirements: `uv` trong PATH, **IDA 9.4+ với idalib**, Python 3.11+.
-- Kênh agent: **`uvx ida-mcp stdio --agent=opencode`** chạy trong case container, mount IDA install + license ro (RAM trong slice `case`); fallback `uvx ida-mcp http --host 127.0.0.1 --port 8737` trên VM khi cần GUI/đa client.
+- Kênh agent: **`uvx ida-mcp stdio --agent=opencode`** chạy trực tiếp trên VM trong case process (ADR-009 — license sẵn ở `~/.idapro`, RAM trong slice `case`); fallback `uvx ida-mcp http --host 127.0.0.1 --port 8737` khi cần GUI/đa client.
 - Kênh batch (bổ sung): idalib/`idat -A -S` cho job nặng headless — crash-site disasm khi source không khớp binary, gadget hunting, diff hàm trước/sau fix trên release d8.
 - Serialize 1 phiên IDA/lúc; **tắt mọi MCP IDA khác** (Hex-Rays khuyến nghị — tránh agent confusion); debug bằng `uvx ida-mcp dashboard` / `logs`.
 - IDA license: giữ trong VM user profile, **không bake vào image**.
@@ -337,7 +338,7 @@ Boundary duy nhất agent ↔ hạ tầng. Versioned (`/v1/`), log mọi call, t
 | Fuzz A: fuzzilli ×4 | 2.5–3.5 GB | 5 | spike khi allocation lớn |
 | Fuzz B: libFuzzer ×2 | 0.8–1.2 GB | 2 | |
 | Triage workers | 0.5 GB | 2 | burst |
-| Case container | 1.2 GB | 3.5 | opencode+node+IDA batch |
+| Case process (direct, ADR-009) | 1.2 GB | 3.5 | opencode+node+IDA batch |
 | Build `ninja -j6` | 0 (idle) | 8–10 | link bằng lld |
 | Headroom | 1.5 GB | — | để không tự bắn chân |
 
@@ -360,7 +361,7 @@ Boundary duy nhất agent ↔ hạ tầng. Versioned (`/v1/`), log mọi call, t
 | Ubuntu + tools + IDA | 25 |
 | depot_tools + V8 checkout (shallow) | 25 |
 | out dirs (release 8 + dcheck 12 + asan 18) | 38 |
-| Docker (2 images + volumes) | 20 |
+| Docker — không dùng cho case, giữ cài (ADR-009) | 0 |
 | store (corpus 10 + cases 10 + artifacts 10 + bench 2) | 32 |
 | Headroom | ~60 |
 
@@ -477,7 +478,7 @@ KPI sống trong dashboard (§7.2); mỗi tháng review — đổi target phải
 ## 9. ADR — Architecture Decision Records
 
 - `docs/adr/` — template (`0000-template.md`) + mỗi quyết định kiến trúc 1 file 10–20 dòng: **Bối cảnh / Quyết định / Phương án đã loại / Hệ quả**.
-- Seed: ADR-001 (mẫu, đã viết) · ADR-002..008 backfill ở M0: case container · MCP boundary · static→dynamic scheduler · flash + free fallback · V8 first · calibration/benchmark split · IDA official MCP single-server.
+- Seed: ADR-001 (mẫu, đã viết) · ADR-002..009 backfill ở M0: case container (002 — **superseded bởi ADR-009: case chạy trực tiếp trên VM**) · MCP boundary · static→dynamic scheduler · flash + free fallback · V8 first · calibration/benchmark split · IDA official MCP single-server.
 - **Rule: không ADR, không merge.** Sau vài tháng đây là bộ nhớ kiến trúc của dự án.
 
 ---
@@ -497,7 +498,7 @@ KPI sống trong dashboard (§7.2); mỗi tháng review — đổi target phải
 | Disk 85% | watchdog | cull corpus → prune docker → pause fuzz |
 | opencode 429/limit | run log | backoff + swap free theo governor |
 | refusal spiral | 2 lần liên tiếp | swap model + fresh session |
-| container leak | `docker ps` >6h idle | kill + đánh dấu case |
+| case process leak | process case >6h idle | kill + đánh dấu case (ADR-009) |
 | git fetch fail | 3 lần | backoff, alert |
 | symbol fail | triage log | check llvm-symbolizer path, fallback addr2line |
 | IDA seat busy | ida MCP lease | serialize, chờ (không song song) |
@@ -542,7 +543,7 @@ KPI sống trong dashboard (§7.2); mỗi tháng review — đổi target phải
 ## 12. An toàn & opsec
 
 - VM lab-only: NAT, không port-forward, không host creds trong VM, không target bên thứ ba — chỉ V8/Chromium upstream + build local, report qua Chromium VRP.
-- Secrets: opencode auth mount ro; IDA license trong profile, không vào image.
+- Secrets: opencode auth + IDA license trong profile VM user (case chạy cùng user — ADR-009; không có image).
 - Artifacts chứa PoC nguyên — không rời VM khi chưa sanitize (paths, usernames) cho report.
 - LUKS khi cài (tùy chọn desktop installer) — khuyến nghị.
 - Ba hard stops persona giữ nguyên; không có luật mới nào được viết thêm vào runtime mà không qua anh + ADR.
@@ -557,7 +558,7 @@ KPI sống trong dashboard (§7.2); mỗi tháng review — đổi target phải
 
 | Mốc | Tuần | Acceptance (đo được) |
 |---|---|---|
-| M0 Foundation & Doctor | 1 | `chromly doctor` xanh (swap, slices, docker, opencode, IDA, disk); build sạch ASAN d8 ≤90' với -j6; persona + resume `-s` OK; `debug paths` chốt; **IDA MCP handshake OK**; ADR-001..008 backfill; repo scaffold + `chromly check` chạy (G0) |
+| M0 Foundation & Doctor | 1 | ✅ **DONE 2026-09-29** — `chromly doctor` xanh (swap, slices, opencode, IDA, disk; docker optional — ADR-009); build sạch ASAN d8 43.9' ≤90' với -j6; persona + resume `-s` OK; `debug paths` chốt; **IDA MCP handshake OK**; ADR-001..009 backfill; repo scaffold + `chromly check` (G0); skills runtime (M0-08) |
 | M1 Fuzz farm | 2–3 | ≥300 exec/s tổng, 24h liên tục, 0 leak; crash → store <5'; watchdog test pass |
 | M2 Intel track | 3–5 | watcher lag <24h; ≥3 review/ngày tự động; ≥1 variant test sinh + chạy; KG nhận commit nodes |
 | M3 Triage & Calibration | 5–7 | 5/5 ground-truth bắt được; FP filter ≥90%; score đúng thứ tự; **telemetry + dashboard v1 lên sóng**; prompt_registry hoạt động |
@@ -648,8 +649,8 @@ chromly/
 │   └── cli/                  # chromly up|status|doctor|build|bench|override|check
 ├── build/                    # tasks/ · BLOCKED.md · README.md (protocol)
 ├── acceptance/               # Mx.sh — trọng tài từng milestone
-├── infra/                    # bootstrap.sh · Dockerfiles · systemd units
-├── runtime/                  # mount → /root/.config/opencode (persona · agents · skills · plugin)
+├── infra/                    # bootstrap.sh · systemd units
+├── runtime/                  # symlink → ~/.config/opencode (persona · skills · plugin)
 ├── docs/adr/                 # ADR
 ├── bench/                    # suite data (runs/ gitignored)
 └── cases/ · store/ · research/    # runtime data (gitignored)
