@@ -148,13 +148,25 @@ def run_case(
             break
 
     set_state(case_id, state, verdict=verdict, budget_used=wall)
+    from chromly.orchestrator.agents import parse_session_usage
+
+    usage = parse_session_usage(output)
     con = db.ensure_db()
     try:
         with con:
             con.execute(
-                "INSERT INTO runs (case_id, session_id, model, wall_s, outcome) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (case_id, session, model, wall, f"case:{state}:{verdict or 'none'}"),
+                "INSERT INTO runs (case_id, session_id, model, wall_s, outcome, "
+                "cost_est, tokens_in, tokens_out) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    case_id,
+                    session,
+                    model,
+                    wall,
+                    f"case:{state}:{verdict or 'none'}",
+                    usage["cost_est"],
+                    usage["tokens_in"],
+                    usage["tokens_out"],
+                ),
             )
     finally:
         con.close()

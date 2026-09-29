@@ -134,10 +134,21 @@ def run_review(sha: str) -> dict:
                 'UPDATE intel SET review_status = ?, variant_flag = ? WHERE "commit" = ?',
                 (status, 1 if variant_count else 0, sha),
             )
+            from chromly.orchestrator.agents import parse_session_usage
+
+            usage = parse_session_usage(output)
             con.execute(
-                "INSERT INTO runs (session_id, model, cost_est, wall_s, outcome) "
-                "VALUES (?,?,?,?,?)",
-                (session, MODEL, None, wall, f"intel:{status}"),
+                "INSERT INTO runs (session_id, model, cost_est, wall_s, outcome, "
+                "tokens_in, tokens_out) VALUES (?,?,?,?,?,?,?)",
+                (
+                    session,
+                    MODEL,
+                    usage["cost_est"],
+                    wall,
+                    f"intel:{status}",
+                    usage["tokens_in"],
+                    usage["tokens_out"],
+                ),
             )
     finally:
         con.close()
