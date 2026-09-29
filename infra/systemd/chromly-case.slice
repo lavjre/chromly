@@ -1,0 +1,8 @@
+[Unit]
+Description=chromly — case container (PLAN §6.4)
+Documentation=file:///home/lavjre/chromly/PLAN.md
+
+[Slice]
+MemoryHigh=4G
+CPUWeight=300
+Nice=0

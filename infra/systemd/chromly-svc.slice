@@ -1,0 +1,6 @@
+[Unit]
+Description=chromly — supervisor + telemetry (PLAN §6.4)
+Documentation=file:///home/lavjre/chromly/PLAN.md
+
+[Slice]
+MemoryHigh=1.5G

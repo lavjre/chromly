@@ -1,0 +1,8 @@
+[Unit]
+Description=chromly — V8 build rig (PLAN §6.4)
+Documentation=file:///home/lavjre/chromly/PLAN.md
+
+[Slice]
+MemoryHigh=9G
+CPUWeight=50
+Nice=10

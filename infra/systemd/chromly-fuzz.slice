@@ -1,0 +1,8 @@
+[Unit]
+Description=chromly — fuzz farm (PLAN §6.4)
+Documentation=file:///home/lavjre/chromly/PLAN.md
+
+[Slice]
+MemoryHigh=4.5G
+CPUWeight=200
+Nice=5
