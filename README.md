@@ -14,3 +14,15 @@ Trạng thái: **M0-ready** (docs + runtime config). Supervisor / fuzz farm / tr
 - **Build + chạy: chỉ trong Ubuntu VM** — V8, fuzzilli, docker, systemd, cgroup: Linux-only. Windows không build được fuzzer stack (và không nên — giành tài nguyên với VM).
 - Windows/host: edit docs + config → `git push`; VM: `git pull` để chạy.
 - Hoặc VS Code Remote-SSH thẳng vào VM — edit & run cùng chỗ, git vẫn là cầu.
+
+## Quickstart — persona trên VM (sau clone)
+
+```bash
+cd ~/chromly
+opencode auth login                  # một lần: chọn opencode-go
+./runtime/personabuilder.sh          # mini + persona + flash (flags verified v2.0.18)
+./runtime/personabuilder.sh -t       # full TUI (persona qua default_agent)
+./runtime/personabuilder.sh -r "hi"  # headless one-shot
+```
+
+Script tự symlink `persona.txt` + `opencode.json` → `~/.config/opencode/` — repo vẫn là source of truth, `git pull` là cập nhật persona.
