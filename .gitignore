@@ -1,6 +1,6 @@
 # runtime artifacts — không commit
-store/
-cases/
+/store/
+/cases/
 bench/runs/
 research/local/
 logs/
@@ -14,3 +14,4 @@ venv/
 .pytest_cache/
 *.egg-info/
 build/ida-db/
+tests/INTEL-*/

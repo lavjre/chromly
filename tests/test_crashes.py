@@ -1,0 +1,60 @@
+from pathlib import Path
+
+from chromly import paths
+from chromly.fuzz import crashes, farm, metrics
+from chromly.store import db
+
+
+def _setup(monkeypatch, tmp_path: Path) -> Path:
+    monkeypatch.setattr(farm, "FUZZ_DIR", tmp_path / "fuzz")
+    monkeypatch.setattr(farm, "STATE_PATH", tmp_path / "fuzz" / "state.json")
+    monkeypatch.setattr(farm, "LOGS_DIR", tmp_path / "fuzz" / "logs")
+    monkeypatch.setattr(paths, "STORE_DIR", tmp_path / "store")
+    monkeypatch.setattr(paths, "DB_PATH", tmp_path / "store" / "chromly.db")
+    src = tmp_path / "fuzz" / "fuzzilli" / "crashes"
+    src.mkdir(parents=True)
+    return src
+
+
+def test_ingest_new_and_dup(monkeypatch, tmp_path: Path) -> None:
+    src = _setup(monkeypatch, tmp_path)
+    (src / "crash-1.fzil").write_bytes(b"PROGRAM-A")
+
+    res1 = crashes.ingest_once()
+    assert len(res1) == 1
+    assert res1[0]["dup"] is False
+
+    # cùng nội dung, tên khác → dedup
+    (src / "crash-2.fzil").write_bytes(b"PROGRAM-A")
+    res2 = crashes.ingest_once()
+    assert res2 and res2[0]["dup"] is True
+
+    # nội dung mới → row mới
+    (src / "crash-3.fzil").write_bytes(b"PROGRAM-B")
+    res3 = crashes.ingest_once()
+    assert res3 and res3[0]["dup"] is False
+
+    con = db.ensure_db()
+    total = con.execute("SELECT COUNT(*) AS n FROM crashes").fetchone()["n"]
+    maxdup = con.execute("SELECT MAX(dup_count) AS d FROM crashes").fetchone()["d"]
+    con.close()
+    assert total == 2
+    assert maxdup == 2
+
+
+def test_ingest_skips_seen(monkeypatch, tmp_path: Path) -> None:
+    src = _setup(monkeypatch, tmp_path)
+    (src / "crash-1.fzil").write_bytes(b"X")
+    assert len(crashes.ingest_once()) == 1
+    assert crashes.ingest_once() == []
+
+
+def test_metrics_sample_and_total(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    sample = metrics.sample_once()
+    assert sample["units"] == {}
+    assert (tmp_path / "fuzz" / "metrics.jsonl").is_file()
+    assert metrics.total_execs({}) == 0.0
+    assert (
+        metrics.total_execs({"a": {"execs_per_sec": 100.5}, "b": {"execs_per_sec": None}}) == 100.5
+    )
