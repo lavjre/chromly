@@ -159,6 +159,10 @@ def poll_once(since_days: int = 7, max_commits: int = 200) -> dict:
         "lag_hours": parse_lag_hours(commits[0]["date"]) if commits else None,
     }
     if not commits:
+        # vẫn tính lag từ head hiện tại (không có commit mới nhưng mirror vẫn fresh)
+        rc, out = _git(["log", "-1", "--format=%cI", "FETCH_HEAD"], m)
+        if rc == 0 and out.strip():
+            result["lag_hours"] = parse_lag_hours(out.strip())
         return result
 
     con = db.ensure_db()
