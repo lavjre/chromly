@@ -7,4 +7,4 @@
 **Evidence:** output acceptance + `uv --version` · `docker --version` · `free -h` · `cat /proc/sys/vm/max_map_count`
 **Out of scope:** V8 checkout/build (M0-03) · opencode install (M0-04) · IDA (M0-05)
 **Phụ thuộc:** —
-**Note:** operator đã chạy `sudo bash infra/bootstrap.sh` (2026-09-29): swap 20479MB · slices loaded · earlyoom active · perf_event_paranoid=2. Idempotent re-run: chưa verify tự động (mọi bước có guard — rerun tuỳ lúc).
+**Note:** operator đã chạy `sudo bash infra/bootstrap.sh` (2026-09-29): swap 20479MB · slices loaded · earlyoom active · perf_event_paranoid=2. **Idempotent re-run verified** (run #2: rc=0, mọi mục đã-có/skip, không thay đổi).

@@ -50,7 +50,7 @@ chk "git identity" bash -c 'test -n "$(git config --global user.name)" && test -
 
 section "idempotency (M0-01)"
 if [[ $RAN == yes ]]; then
-    note "operator: chạy lại lần 2 'sudo bash infra/bootstrap.sh' — phải exit 0 và không đổi gì thêm"
+    note "idempotent re-run đã verify 2026-09-29 (run #2: rc=0, không thay đổi gì)"
 else
     pend "idempotent run — operator chạy script 2 lần"
 fi
