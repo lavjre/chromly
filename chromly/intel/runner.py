@@ -118,6 +118,13 @@ def run_review(sha: str) -> dict:
             variant_count = len(json.loads(variants.read_text()))
         except json.JSONDecodeError:
             variant_count = 0
+    if review.is_file() and review.stat().st_size > 0:
+        try:
+            from chromly.knowledge.kg import ingest_review
+
+            ingest_review(sha)
+        except Exception as exc:  # noqa: BLE001 — KG lỗi không làm chết review
+            print(f"kg ingest lỗi: {type(exc).__name__}: {exc}", flush=True)
 
     ok = review.is_file() and review.stat().st_size > 0
     status = "reviewed" if ok else "failed"

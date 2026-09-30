@@ -163,6 +163,22 @@ def _restart(state: dict, name: str, rec: dict, reason: str, now: float) -> dict
     return {"unit": name, "action": "restarted", "reason": reason}
 
 
+def _aux_check(state: dict) -> list[dict]:
+    """Self-heal aux loops (trừ chính watchdog) — respawn khi chết."""
+    from chromly.orchestrator import supervisor
+
+    actions: list[dict] = []
+    aux = state.setdefault("aux", {})
+    for name, rec in list(aux.items()):
+        if name == "watchdog":
+            continue
+        if not farm._alive(rec):
+            aux[name] = supervisor._spawn_aux(name, rec)
+            append_event("aux-restart", name, {"pid": aux[name]["pid"]})
+            actions.append({"unit": f"aux:{name}", "action": "restarted", "reason": "dead"})
+    return actions
+
+
 def tick(now: float | None = None, hang_s: float | None = None) -> list[dict]:
     now = now if now is not None else time.time()
     hang_s = hang_s if hang_s is not None else HANG_S
@@ -207,6 +223,10 @@ def tick(now: float | None = None, hang_s: float | None = None) -> list[dict]:
             state["units"][name] = rec
             farm._save_state(state)  # lưu ngay — tránh clobber state của restart sau này
 
+    aux_actions = _aux_check(state)
+    if aux_actions:
+        farm._save_state(state)
+    actions.extend(aux_actions)
     return actions
 
 
