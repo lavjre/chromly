@@ -65,5 +65,18 @@
       "--liftoff",
       "--abort-on-uncaught-exception"
     ]
+  },
+  {
+    "id": "calib-567129324",
+    "surface": "maglev",
+    "bug_class": "type-confusion-field-type",
+    "difficulty": 3,
+    "fix_sha": "c713c92ce08f558caec5b068172348a21e9a5d9d",
+    "note": "fix mới hơn checkout → bug có sẵn trên cây; noise: store oddball (tag Smi-like) vào field type Smi, map không generalize — HeapObjectVerify fail (objects-debug.cc:633)",
+    "repro_js": "// chromly calibration repro — regress-567129324 (maglev: tái dùng conversion yếu\n// (kNumberOrOddball thay kNumber) → oddball lọt vào store Smi-field, map không generalize).\n// Nguồn: test/mjsunit/turbolev/regress-567129324.js @ fix c713c92ce0 (fix mới hơn checkout\n// b8ffaab → bug có sẵn trên cây). Verify fail = crash ground truth.\n// Chạy: d8 --allow-natives-syntax --turbolev --max-turbolev-eager-inlined-bytecode-size=0 repro.js\n\nfunction assertEquals(a, b) { if (a !== b) throw new Error(\"assertEquals: \" + a + \" !== \" + b); }\n\nfunction alt(x) {\n  return Math.imul(x, 3);\n}\n\nconst obj = { b: 123 };\n\nfunction f(flag, y, obj) {\n  const x = flag ? true : 123;\n  const a = alt(x);\n  const b = x | y;\n  obj.b = x;\n  return b + a;\n}\n\n%PrepareFunctionForOptimization(alt);\n%PrepareFunctionForOptimization(f);\nf(false, 0.125, obj);\n%OptimizeFunctionOnNextCall(f);\nassertEquals(123 + 369, f(false, 0.125, obj));\nassertEquals(1 + 3, f(true, 0.125, obj));\nassertEquals(true, obj.b);\n%HeapObjectVerify(obj);\nprint(\"REPRO-DONE\");\n",
+    "repro_flags": [
+      "--turbolev",
+      "--max-turbolev-eager-inlined-bytecode-size=0"
+    ]
   }
 ]
