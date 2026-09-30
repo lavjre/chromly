@@ -22,6 +22,28 @@ from chromly.store import db
 
 TIMEOUT_S = 60
 CRASH_CODES = {134, 135, 136, 137, 138, 139}
+OOM_MARKERS = (
+    "Fatal JavaScript out of memory",
+    "CALL_AND_RETRY_LAST",
+    "Fatal process out of memory",
+)
+
+
+def _extract_run_flags(test: Path) -> list[str]:
+    """Đọc flags gợi ý từ header test (`// run: d8 ... --flag` hoặc `// flags: --flag`)."""
+    try:
+        lines = test.read_text(errors="replace").splitlines()[:12]
+    except OSError:
+        return []
+    for line in lines:
+        low = line.strip()
+        if low.startswith("// run:") or low.startswith("// flags:"):
+            return [
+                tok
+                for tok in low.split()
+                if tok.startswith("--") and tok != "--allow-natives-syntax"
+            ]
+    return []
 
 
 def builds_dir() -> Path:
@@ -61,16 +83,20 @@ def generate_for(sha: str) -> list[dict]:
 
 
 def run_test(d8: Path, test: Path) -> dict:
+    extra_flags = _extract_run_flags(test)
     try:
         proc = subprocess.run(
-            [str(d8), "--allow-natives-syntax", str(test)],
+            [str(d8), "--allow-natives-syntax", *extra_flags, str(test)],
             capture_output=True,
             text=True,
             timeout=TIMEOUT_S,
         )
         rc = proc.returncode
-        output = (proc.stdout + proc.stderr)[-2000:]
-        if rc in CRASH_CODES or rc < 0:
+        full = proc.stdout + proc.stderr
+        output = full[-2000:]
+        if any(m in full for m in OOM_MARKERS):
+            outcome = "oom"  # test tự ép OOM → không phải crash (FP filter §5.4)
+        elif rc in CRASH_CODES or rc < 0:
             outcome = "crash"
         elif rc != 0 or "Uncaught" in output or "uncaught" in output:
             outcome = "error"

@@ -35,7 +35,8 @@ Chỉ đọc/ghi trong workdir này bằng đường dẫn tuyệt đối. Khôn
    {{"title": "...", "confidence": "high|med|low",
     "test_idea": "mô tả ngắn", "test_js": "<JS chạy standalone trên d8>"}}
    - `test_js`: code JS tối thiểu để kiểm chứng hypothesis, chạy được bằng
-     `d8 --allow-natives-syntax file.js` (để trống "" nếu chưa viết được).
+     `d8 --allow-natives-syntax file.js`. Nếu cần flags khác → dòng đầu của `test_js` ghi
+     `// flags: --expose-gc ...` (để trống "" nếu chưa viết được).
    - Chỉ ghi variant có cơ sở từ diff. Không có variant thì ghi [].
 5. Xong thì DỪNG. Không sửa file khác, không cài gì.
 """
