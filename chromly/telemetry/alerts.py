@@ -32,8 +32,9 @@ def evaluate() -> list[dict]:
     new: list[dict] = []
     con = db.ensure_db()
     try:
-        state = intel_state()
-        lag = state.get("last_lag_hours")
+        from chromly.intel.watcher import max_lag_hours
+
+        lag = max_lag_hours(intel_state())
         if (
             lag is not None
             and lag > 24

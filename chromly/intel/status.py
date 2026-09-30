@@ -27,6 +27,13 @@ def status() -> dict:
     finally:
         con.close()
     state = _load_state()
+    from chromly.intel.watcher import max_lag_hours
+
+    last_polls = [
+        v.get("last_poll")
+        for v in state.values()
+        if isinstance(v, dict) and isinstance(v.get("last_poll"), (int, float))
+    ]
     return {
         "pending": pending,
         "reviewed": reviewed,
@@ -35,8 +42,8 @@ def status() -> dict:
         "kg_nodes": nodes,
         "kg_edges": edges,
         "last_commit": (last["commit"][:12] if last else None),
-        "lag_hours": state.get("last_lag_hours"),
-        "last_poll": state.get("last_poll"),
+        "lag_hours": max_lag_hours(state),
+        "last_poll": max(last_polls) if last_polls else None,
     }
 
 

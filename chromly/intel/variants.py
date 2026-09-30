@@ -3,11 +3,15 @@
 - generate: mỗi variant có `test_js` → `tests/INTEL-<sha12>/variant-N.js` (kèm header comment).
 - run: chạy từng test trên `out/asan/d8` (+ `out/release/d8` nếu có) — timeout 60s,
   outcome: crash | error | ok | timeout. Kết quả ghi results.json + DB intel.variant_flag.
+- crash → crash store row (source='variant', score 5, triaged) → auto-case pipeline bắt.
+- run_pending_variants: quét reviewed commits chưa chạy (chỉ V8-runnable) — dùng sau review.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -106,6 +110,9 @@ def run_variants(sha: str) -> dict:
     (out_dir / "variant-results.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2))
 
     crashes = sum(1 for r in results if r["outcome"] == "crash")
+    for r in results:
+        if r["outcome"] == "crash":
+            _file_variant_crash(sha, r)
     con = db.ensure_db()
     try:
         with con:
@@ -116,6 +123,63 @@ def run_variants(sha: str) -> dict:
     finally:
         con.close()
     return summary
+
+
+def _file_variant_crash(sha: str, result: dict) -> None:
+    """Variant crash → crash store (source='variant') để auto-case pipeline bắt."""
+    test = tests_dir_for(sha) / result["variant"]
+    if not test.is_file():
+        return
+    data = test.read_bytes()
+    h = hashlib.sha256(data).hexdigest()
+    art = paths.STORE_DIR / "crashes" / h
+    art.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(test, art / f"program_{sha[:12]}_{result['variant']}")
+    (art / "meta.json").write_text(
+        json.dumps(
+            {"hash": h, "unit": "variant", "orig_path": str(test), "created": time.time()},
+            indent=2,
+        )
+    )
+    con = db.ensure_db()
+    try:
+        with con:
+            con.execute(
+                "INSERT OR IGNORE INTO crashes (hash, fault_type, severity, build_rev, "
+                "source, state) VALUES (?, 'variant-crash', 5, ?, 'variant', 'triaged')",
+                (h, sha[:12]),
+            )
+    finally:
+        con.close()
+    print(f"[variants] CRASH → store/crashes/{h[:12]} (từ {sha[:12]})", flush=True)
+
+
+def run_pending_variants(limit: int = 5) -> list[dict]:
+    """Chạy variants cho reviewed commits chưa có kết quả (chỉ V8-runnable: paths src/ hoặc v8/)."""
+    con = db.ensure_db()
+    try:
+        rows = con.execute(
+            'SELECT "commit", paths FROM intel '
+            "WHERE review_status = 'reviewed' AND variant_flag = 1"
+        ).fetchall()
+    finally:
+        con.close()
+    out: list[dict] = []
+    for r in rows:
+        if len(out) >= limit:
+            break
+        sha = r["commit"]
+        d = intel_dir() / sha
+        if (d / "variant-results.json").is_file():
+            continue
+        try:
+            changed = json.loads(r["paths"] or "[]")
+        except json.JSONDecodeError:
+            changed = []
+        if not any(p.startswith(("src/", "v8/")) for p in changed):
+            continue  # chromium-only (Blink/Mojo...) — cần Chrome lab (M5+)
+        out.append(run_variants(sha))
+    return out
 
 
 def run_variants_cmd(args) -> int:

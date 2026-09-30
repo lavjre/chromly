@@ -10,7 +10,7 @@ from pathlib import Path
 
 from chromly import paths
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS crashes (
@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS intel (
     review_status TEXT,
     variant_flag  INTEGER DEFAULT 0,
     case_id       TEXT,
+    source        TEXT DEFAULT 'v8',
     created       TEXT DEFAULT (datetime('now'))
 );
 
@@ -284,6 +285,9 @@ _MIGRATIONS: dict[int, list[str]] = {
             started      TEXT,
             finished     TEXT
         )""",
+    ],
+    7: [
+        "ALTER TABLE intel ADD COLUMN source TEXT DEFAULT 'v8'",
     ],
 }
 

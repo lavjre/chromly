@@ -44,8 +44,8 @@ def test_parse_lag() -> None:
 
 def test_poll_local(monkeypatch, tmp_path: Path) -> None:
     bare = _make_origin(tmp_path)
-    monkeypatch.setattr(watcher, "mirror_dir", lambda: tmp_path / "mirror")
-    monkeypatch.setattr(watcher, "V8_URL", str(bare))
+    monkeypatch.setattr(watcher, "mirror_dir_for", lambda name: tmp_path / f"mirror-{name}")
+    monkeypatch.setitem(watcher.MIRRORS["v8"], "url", str(bare))
     monkeypatch.setattr(watcher, "state_path", lambda: tmp_path / "state.json")
     monkeypatch.setattr(watcher, "intel_dir", lambda: tmp_path / "intel")
     monkeypatch.setattr(paths, "STORE_DIR", tmp_path / "store")

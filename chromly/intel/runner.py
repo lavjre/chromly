@@ -24,7 +24,7 @@ MODEL = "opencode-go/deepseek-v4.1-flash"
 SCRATCH_ROOT = Path("/tmp/opencode/chromly-intel")
 
 PROMPT = """\
-Bạn là intel lane của chromly (PLAN §5.3). WORKDIR TUYỆT ĐỐI: {workdir}
+Bạn là intel lane của chromly — săn variant V8/Chromium (PLAN §5.3). WORKDIR TUYỆT ĐỐI: {workdir}
 Chỉ đọc/ghi trong workdir này bằng đường dẫn tuyệt đối. Không dạo các thư mục khác.
 
 1. Đọc `{workdir}/meta.json` (commit + paths) và `{workdir}/commit.diff`.
@@ -187,6 +187,25 @@ def _review_batch(limit: int, sha: str | None) -> int:
         print(json.dumps(res, ensure_ascii=False), flush=True)
         if res.get("status") not in ("reviewed",):
             failed += 1
+    # Track B đầy đủ: hypothesis → test variant → crash (nếu có) → crash store → auto-case
+    try:
+        from chromly.intel.variants import run_pending_variants
+
+        for v in run_pending_variants(limit=3):
+            n_crash = sum(1 for x in v["results"] if x["outcome"] == "crash")
+            print(
+                json.dumps(
+                    {
+                        "variants_run": v["sha"][:12],
+                        "generated": v["generated"],
+                        "crashes": n_crash,
+                    },
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
+    except Exception as exc:  # noqa: BLE001 — variant runner lỗi không làm chết review
+        print(f"variants lỗi: {type(exc).__name__}: {exc}", flush=True)
     return 1 if failed else 0
 
 

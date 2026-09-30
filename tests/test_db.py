@@ -40,6 +40,8 @@ def test_migration_v1_to_v2(tmp_path: Path) -> None:
     con.executescript(
         "CREATE TABLE crashes (id INTEGER PRIMARY KEY, hash TEXT UNIQUE, fault_type TEXT, "
         "stack_norm TEXT, severity INTEGER, build_rev TEXT, source TEXT, created TEXT, state TEXT);"
+        'CREATE TABLE intel ("commit" TEXT PRIMARY KEY, paths TEXT, review_status TEXT, '
+        "variant_flag INTEGER DEFAULT 0, case_id TEXT, created TEXT);"
     )
     con.execute("PRAGMA user_version = 1")
     con.commit()
@@ -49,5 +51,7 @@ def test_migration_v1_to_v2(tmp_path: Path) -> None:
     assert con2.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
     cols = {r[1] for r in con2.execute("PRAGMA table_info(crashes)")}
     assert "dup_count" in cols
+    intel_cols = {r[1] for r in con2.execute("PRAGMA table_info(intel)")}
+    assert "source" in intel_cols
     assert {"metrics", "kg_nodes", "kg_edges", "lessons"} <= _tables(con2)
     con2.close()
