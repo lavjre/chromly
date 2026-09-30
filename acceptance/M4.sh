@@ -2,7 +2,7 @@
 # acceptance/M4.sh — milestone M4 (§13): case · mcp · budget · sched · bench
 source "$(cd "$(dirname "$0")" && pwd)/lib.sh"
 
-SCRIPTS=(M4-mcp M4-budget M4-sched M4-bench)
+SCRIPTS=(M4-mcp M4-budget M4-sched M4-bench M4-recon)
 overall=0
 for s in "${SCRIPTS[@]}"; do
     section "$s"

@@ -74,6 +74,14 @@ def main(argv: list[str] | None = None) -> int:
     p_var.add_argument("--sha", default=None, help="mặc định: commit reviewed mới nhất")
     intel_sub.add_parser("status", help="trạng thái intel (M2-05)")
 
+    p_recon = sub.add_parser("recon", help="recon & surface — archaeology/report (§2, M4-08)")
+    recon_sub = p_recon.add_subparsers(dest="recon_cmd")
+    p_arch = recon_sub.add_parser("archaeology", help="harvest fix security từ mirror")
+    p_arch.add_argument("--mirror", default="v8", choices=["v8", "chromium"])
+    p_arch.add_argument("--days", type=int, default=90)
+    p_arch.add_argument("--max", type=int, default=600)
+    recon_sub.add_parser("report", help="surface report data-driven")
+
     p_kg = sub.add_parser("kg", help="knowledge graph — ingest/query/neighbors (§7.3, M2)")
     kg_sub = p_kg.add_subparsers(dest="kg_cmd")
     p_kgi = kg_sub.add_parser("ingest", help="ingest intel review theo sha")
@@ -193,6 +201,10 @@ def main(argv: list[str] | None = None) -> int:
         from chromly.intel.watcher import run_intel_cmd
 
         return run_intel_cmd(args)
+    if args.cmd == "recon":
+        from chromly.intel.recon import run_recon_cmd
+
+        return run_recon_cmd(args)
     if args.cmd == "kg":
         from chromly.knowledge.kg import run_kg_cmd
 
