@@ -2,7 +2,7 @@
 
 - generate: mỗi variant có `test_js` → `tests/INTEL-<sha12>/variant-N.js` (kèm header comment).
 - run: chạy từng test trên `out/asan/d8` (+ `out/release/d8` nếu có) — timeout 60s,
-  outcome: crash | flag-conflict | oom | error | ok | timeout. Kết quả ghi results.json
+  outcome: crash | flag-conflict | oom | skipped | error | ok | timeout. Kết quả ghi results.json
   + DB intel.variant_flag.
 - crash → crash store row (source='variant', score 5, triaged) → auto-case pipeline bắt.
 - flag-conflict: d8 abort vì cờ xung đột build (readonly flag, vd --verify-turboshaft) —
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -92,33 +93,53 @@ def generate_for(sha: str) -> list[dict]:
     return generated
 
 
-def run_test(d8: Path, test: Path) -> dict:
-    extra_flags = _extract_run_flags(test)
+MISSING_FLAG_RE = re.compile(r"enable with (--[\w-]+)")
+
+
+def _run_once(d8: Path, test: Path, extra: list[str]) -> tuple[int | None, str]:
     try:
         proc = subprocess.run(
-            [str(d8), "--allow-natives-syntax", *extra_flags, str(test)],
+            [str(d8), "--allow-natives-syntax", *_extract_run_flags(test), *extra, str(test)],
             capture_output=True,
             text=True,
             timeout=TIMEOUT_S,
         )
-        rc = proc.returncode
-        full = proc.stdout + proc.stderr
-        output = full[-2000:]
-        if any(m in full for m in OOM_MARKERS):
-            outcome = "oom"  # test tự ép OOM → không phải crash (FP filter §5.4)
-        elif any(m in full for m in FLAG_CONFLICT_MARKERS):
-            outcome = "flag-conflict"  # cờ xung đột build → không chạy được (FP filter)
-        elif rc in CRASH_CODES or rc < 0:
-            outcome = "crash"
-        elif rc != 0 or "Uncaught" in output or "uncaught" in output:
-            outcome = "error"
-        else:
-            outcome = "ok"
+        return proc.returncode, proc.stdout + proc.stderr
     except subprocess.TimeoutExpired:
-        rc = None
-        output = "(timeout)"
-        outcome = "timeout"
-    return {"rc": rc, "outcome": outcome, "output_tail": output}
+        return None, "(timeout)"
+
+
+def run_test(d8: Path, test: Path) -> dict:
+    retries: list[str] = []
+    rc, full = _run_once(d8, test, retries)
+    # V8 báo "unknown ... enable with --X" → tự chạy lại kèm flag còn thiếu (tối đa 2 lượt)
+    for _ in range(2):
+        m = MISSING_FLAG_RE.search(full)
+        if m is None:
+            break
+        flag = m.group(1)
+        if flag in _extract_run_flags(test) or flag in retries:
+            break
+        retries.append(flag)
+        rc, full = _run_once(d8, test, retries)
+
+    output = full[-2000:]
+    if any(m in full for m in OOM_MARKERS):
+        outcome = "oom"  # test tự ép OOM → không phải crash (FP filter §5.4)
+    elif any(m in full for m in FLAG_CONFLICT_MARKERS):
+        outcome = "flag-conflict"  # cờ xung đột build → không chạy được (FP filter)
+    elif MISSING_FLAG_RE.search(full) and rc in (0, 1):
+        outcome = "skipped"  # thiếu flag không tự thêm được — không tính là pass
+    elif rc in CRASH_CODES or rc < 0:
+        outcome = "crash"
+    elif rc != 0 or "Uncaught" in output or "uncaught" in output:
+        outcome = "error"
+    else:
+        outcome = "ok"
+    res = {"rc": rc, "outcome": outcome, "output_tail": output}
+    if retries:
+        res["flags_added"] = retries
+    return res
 
 
 def run_variants(sha: str) -> dict:

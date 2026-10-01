@@ -83,3 +83,41 @@ def test_flag_conflict_not_crash(monkeypatch, tmp_path: Path) -> None:
     con = db.ensure_db()
     n = con.execute("SELECT COUNT(*) AS n FROM crashes").fetchone()["n"]
     assert n == 0, "flag-conflict không được tạo crash row"
+
+
+def _fake_d8_flag_retry(tmp_path: Path, flag: str) -> Path:
+    d8 = tmp_path / "v8" / "out" / "asan" / "d8"
+    d8.parent.mkdir(parents=True, exist_ok=True)
+    d8.write_text(
+        "#!/bin/bash\n"
+        f'if [[ "$*" != *"{flag}"* ]]; then\n'
+        f'  echo "WebAssembly.Module(): unknown type form: 101, enable with {flag}"\n'
+        "  exit 0\n"
+        "fi\n"
+        "echo ok\n"
+        "exit 0\n"
+    )
+    d8.chmod(0o755)
+    return d8
+
+
+def test_variant_missing_flag_retry(monkeypatch, tmp_path: Path) -> None:
+    """'enable with --X' → tự chạy lại kèm flag; thành công thì outcome ok + flags_added."""
+    d8 = _fake_d8_flag_retry(tmp_path, "--wasm-shared")
+    test = tmp_path / "v.js"
+    test.write_text("print(1);\n")
+    res = variants.run_test(d8, test)
+    assert res["outcome"] == "ok"
+    assert res.get("flags_added") == ["--wasm-shared"]
+
+
+def test_variant_missing_flag_still_skipped(monkeypatch, tmp_path: Path) -> None:
+    """Flag không giúp được → outcome 'skipped' (không tính pass)."""
+    d8 = tmp_path / "v8" / "out" / "asan" / "d8"
+    d8.parent.mkdir(parents=True, exist_ok=True)
+    d8.write_text('#!/bin/bash\necho "unknown type form: 101, enable with --other-flag"\nexit 0\n')
+    d8.chmod(0o755)
+    test = tmp_path / "v.js"
+    test.write_text("print(1);\n")
+    res = variants.run_test(d8, test)
+    assert res["outcome"] == "skipped"
