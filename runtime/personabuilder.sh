@@ -21,6 +21,8 @@ mkdir -p "$CFG"
 ln -sfn "$HERE/persona.txt"   "$CFG/persona.txt"
 ln -sfn "$HERE/opencode.json" "$CFG/opencode.json"
 ln -sfn "$HERE/skills"        "$CFG/skills"   # global skill source (docs V2: ~/.config/opencode/skills)
+# plugin runtime (§4.5): deny-list + telemetry — discovery layout ~/.config/opencode/plugins/
+ln -sfn "$HERE/plugins"       "$CFG/plugins"
 
 case "${1:-}" in
   -t|--tui) exec opencode ;;
