@@ -204,8 +204,12 @@ def main(argv: list[str] | None = None) -> int:
     p_cn.add_argument("--source", default="manual")
     p_cr = case_sub.add_parser("run", help="chạy agent cho case")
     p_cr.add_argument("case_id")
-    p_cr.add_argument("--wall", type=float, default=480.0, help="wall tối đa (phút)")
+    p_cr.add_argument(
+        "--wall", type=float, default=None, help="wall tối đa (phút); mặc định 360=6h"
+    )
     p_cr.add_argument("--resume", default=None, help="session id để resume")
+    p_carch = case_sub.add_parser("archive", help="nén case đã kết thúc → _archive/ + ARCHIVED")
+    p_carch.add_argument("case_id")
     case_sub.add_parser("list", help="liệt kê cases")
     p_cs = case_sub.add_parser("show", help="chi tiết case")
     p_cs.add_argument("case_id")

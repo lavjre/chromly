@@ -95,4 +95,18 @@ else
     fail "thiếu artifacts/runs"
 fi
 
+section "DoD: runs.prompt_hash (review v3 F3)"
+N="$("$VENV_BIN/python" -c "
+from chromly.store import db
+con = db.ensure_db()
+n = con.execute(\"SELECT COUNT(*) AS n FROM runs WHERE prompt_hash IS NOT NULL AND prompt_hash != ''\").fetchone()['n']
+con.close()
+print(n)
+")"
+if [[ "${N:-0}" -ge 1 ]]; then
+    pass "$N run có prompt_hash (truy vết prompt ↔ run)"
+else
+    pend "chưa có run mới sau fix prompt_hash — kiểm khi case kế tiếp chạy"
+fi
+
 ac_summary

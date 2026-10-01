@@ -23,7 +23,7 @@ from chromly.store import db
 CASE_SCRATCH = Path("/tmp/opencode/chromly-case")
 MAX_RESUME = 8
 MAX_WALL_DEFAULT = 6 * 3600.0  # plan §10.2: case process >6h coi là leak
-HIGH_SCORE_MIN = 6
+HIGH_SCORE_MIN = 5  # thang severity thực: variant=5, validate bump=7
 VERDICT_RE = re.compile(r"verdict:\s*(validated-crash|no-bug|needs-human|report-draft)")
 
 
@@ -96,6 +96,11 @@ def run_case(
     if not opencode:
         return {"case": case_id, "status": "no-opencode"}  # chưa RUNNING — không kẹt
 
+    if resume_session:
+        meta = pipeline.load_case(case_id)
+        if int(meta.get("resumes", 0)) >= MAX_RESUME:
+            return {"case": case_id, "status": "resume-cap", "resumes": meta.get("resumes", 0)}
+
     s = _prepare_scratch(case_id)
     set_state(case_id, "RUNNING")
     try:
@@ -152,21 +157,6 @@ def _run_case_inner(
         cmd += ["-s", resume_session]
     cmd += [_mission(case_id)]
 
-    cmd = [
-        opencode,
-        "run",
-        "--format",
-        "json",
-        "--auto",
-        "--agent",
-        "persona",
-        "-m",
-        model,
-    ]
-    if resume_session:
-        cmd += ["-s", resume_session]
-    cmd += [_mission(case_id)]
-
     t0 = time.monotonic()
     timed_out = False
     try:
@@ -207,19 +197,27 @@ def _run_case_inner(
             break
 
     set_state(case_id, state, verdict=verdict, budget_used=wall)
+    if resume_session:
+        meta = pipeline.load_case(case_id)
+        meta["resumes"] = int(meta.get("resumes", 0)) + 1
+        (pipeline.case_dir(case_id) / "meta.json").write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2)
+        )
     from chromly.orchestrator.agents import parse_session_usage
+    from chromly.telemetry import registry
 
     usage = parse_session_usage(output)
     con = db.ensure_db()
     try:
         with con:
             con.execute(
-                "INSERT INTO runs (case_id, session_id, model, wall_s, outcome, "
-                "cost_est, tokens_in, tokens_out) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO runs (case_id, session_id, model, prompt_hash, wall_s, outcome, "
+                "cost_est, tokens_in, tokens_out) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     case_id,
                     session,
                     model,
+                    registry.persona_hash(),
                     wall,
                     f"case:{state}:{verdict or 'none'}",
                     usage["cost_est"],
@@ -298,13 +296,18 @@ def run_case_cmd(args: argparse.Namespace) -> int:
         print(json.dumps(meta, ensure_ascii=False))
         return 0
     if sub == "run":
+        wall_arg = getattr(args, "wall", None)
         res = run_case(
             args.case_id,
-            max_wall=getattr(args, "wall", 8 * 60) * 60.0,
+            max_wall=wall_arg * 60.0 if wall_arg else MAX_WALL_DEFAULT,
             resume_session=getattr(args, "resume", None),
         )
         print(json.dumps(res, ensure_ascii=False))
         return 0 if res.get("status") in ("verdict", "timeout") else 1
+    if sub == "archive":
+        res = pipeline.archive_case(args.case_id)
+        print(json.dumps(res, ensure_ascii=False))
+        return 0 if res.get("status") in ("archived", "already") else 1
     if sub == "list":
         for m in pipeline.list_cases():
             print(f"{m['id']}  {m['state']:<10} crash={(m.get('crash_hash') or '-')[:12]}")
@@ -315,5 +318,5 @@ def run_case_cmd(args: argparse.Namespace) -> int:
         return 0
     if sub == "auto":
         return run_case_auto(interval=getattr(args, "interval", 900.0))
-    print("usage: chromly case {new|run|list|show|auto}")
+    print("usage: chromly case {new|run|archive|list|show|auto}")
     return 2

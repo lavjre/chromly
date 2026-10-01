@@ -113,6 +113,47 @@ def new_case(crash_hash: str | None = None, source: str = "manual") -> dict:
     return meta
 
 
+TERMINAL_STATES = ("VERDICT", "TIMEOUT", "HELP", "ERROR")
+_ARCHIVE_KEEP = (
+    "meta.json",
+    "VERDICT.md",
+    "notes.md",
+    "triage.md",
+    "brief.md",
+    "log.jsonl",
+    "HELP.md",
+)
+
+
+def archive_case(case_id: str) -> dict:
+    """Nén toàn bộ case dir → cases/_archive/<id>.tar.gz, chỉ giữ file nhẹ, state=ARCHIVED."""
+    import tarfile
+
+    d = case_dir(case_id)
+    if not d.is_dir():
+        raise FileNotFoundError(f"không thấy case {case_id}")
+    meta = load_case(case_id)
+    if meta.get("state") == "ARCHIVED":
+        return {"case": case_id, "status": "already"}
+    if meta.get("state") not in TERMINAL_STATES:
+        return {"case": case_id, "status": "not-terminal", "state": meta.get("state")}
+    arch = cases_dir() / "_archive"
+    arch.mkdir(parents=True, exist_ok=True)
+    tarball = arch / f"{case_id}.tar.gz"
+    with tarfile.open(tarball, "w:gz") as tf:
+        tf.add(d, arcname=case_id)
+    for item in list(d.iterdir()):
+        if item.name in _ARCHIVE_KEEP:
+            continue
+        if item.is_dir():
+            shutil.rmtree(item)
+        else:
+            item.unlink()
+    set_state(case_id, "ARCHIVED")
+    log_event(case_id, "archived", {"tarball": str(tarball)})
+    return {"case": case_id, "status": "archived", "tarball": str(tarball)}
+
+
 def brief_text(meta: dict) -> str:
     v8 = paths.V8_ROOT
     scratch = Path("/tmp/opencode/chromly-case") / meta["id"]

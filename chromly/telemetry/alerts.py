@@ -1,6 +1,6 @@
 """Alert engine — M3-04: rules trên state/metrics → alerts + digest (§7.2).
 
-Rules v0: watcher_lag · disk_low · farm_dead · refusal_recent · crash_stale.
+Rules v0: watcher_lag · disk_low · farm_dead · refusal_recent · crash_stale · case_help.
 Dedup: cùng rule chỉ có 1 alert chưa-ack; ack qua `chromly telemetry alerts --ack N`.
 """
 
@@ -77,6 +77,17 @@ def evaluate() -> list[dict]:
             and _new_alert(con, "crash_stale", "warn", {"days": 7})
         ):
             new.append({"rule": "crash_stale", "severity": "warn", "payload": {"days": 7}})
+
+        # case cần người (agent viết HELP.md) → alert, không đợi operator tự thấy
+        for d in sorted(paths.CASES_DIR.glob("CASE-*")) if paths.CASES_DIR.is_dir() else []:
+            try:
+                meta = json.loads((d / "meta.json").read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+            if meta.get("state") == "HELP" and _new_alert(
+                con, "case_help", "warn", {"case": d.name}
+            ):
+                new.append({"rule": "case_help", "severity": "warn", "payload": {"case": d.name}})
 
         con.commit()
     finally:

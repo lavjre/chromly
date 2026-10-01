@@ -237,12 +237,15 @@ def run_review(sha: str) -> dict:
             from chromly.orchestrator.agents import parse_session_usage
 
             usage = parse_session_usage(output)
+            from chromly.telemetry import registry
+
             con.execute(
-                "INSERT INTO runs (session_id, model, cost_est, wall_s, outcome, "
-                "tokens_in, tokens_out) VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO runs (session_id, model, prompt_hash, cost_est, wall_s, outcome, "
+                "tokens_in, tokens_out) VALUES (?,?,?,?,?,?,?,?)",
                 (
                     session,
                     MODEL,
+                    registry.persona_hash(),
                     usage["cost_est"],
                     wall,
                     f"intel:{status}",

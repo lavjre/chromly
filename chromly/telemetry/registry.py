@@ -29,6 +29,15 @@ def _tracked_files() -> list[tuple[str, Path]]:
     return [(kind, f) for kind, f in files if f.is_file()]
 
 
+def persona_hash() -> str:
+    """sha256 của persona.txt hiện tại — ghi vào runs.prompt_hash (§8: truy vết run ↔ prompt)."""
+    f = paths.REPO_ROOT / "runtime" / "persona.txt"
+    try:
+        return hashlib.sha256(f.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
 def sync() -> list[dict]:
     """Hash các file prompt hiện tại, ghi hash mới vào registry. Trả các entry MỚI."""
     con = db.ensure_db()

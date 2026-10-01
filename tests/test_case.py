@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
 
 from chromly import paths
 from chromly.case import pipeline, runner
+from chromly.fuzz import farm
 from chromly.orchestrator import budget
 from chromly.store import db
 
@@ -112,6 +114,16 @@ def test_case_high_score_from_severity(monkeypatch, tmp_path: Path) -> None:
     assert runner._case_high_score(hi["id"]) is True
     assert runner._case_high_score(lo["id"]) is False
 
+    con = db.ensure_db()
+    with con:
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, state) VALUES (?, ?, ?, 'triaged')",
+            ("d" * 64, "variant-crash", 5),
+        )
+    con.close()
+    mid = pipeline.new_case("d" * 12)
+    assert runner._case_high_score(mid["id"]) is True  # ngưỡng 5 = variant-crash thật
+
 
 def test_run_case_no_opencode_not_stuck(monkeypatch, tmp_path: Path) -> None:
     _setup(monkeypatch, tmp_path)
@@ -156,3 +168,80 @@ def test_run_case_help_propagates(monkeypatch, tmp_path: Path) -> None:
     res = runner.run_case(meta["id"], max_wall=10)
     assert res["status"] == "help"
     assert (pipeline.case_dir(meta["id"]) / "HELP.md").is_file()
+
+
+def test_resume_cap_enforced(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    meta = pipeline.new_case(None)
+    m = pipeline.load_case(meta["id"])
+    m["resumes"] = runner.MAX_RESUME
+    (pipeline.case_dir(meta["id"]) / "meta.json").write_text(json.dumps(m))
+    res = runner.run_case(meta["id"], resume_session="ses_dummy", max_wall=1)
+    assert res["status"] == "resume-cap"
+    assert pipeline.load_case(meta["id"])["state"] != "RUNNING"
+
+
+def test_prompt_hash_written_to_runs(monkeypatch, tmp_path: Path) -> None:
+    import hashlib
+
+    _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(paths, "REPO_ROOT", tmp_path)
+    (tmp_path / "runtime").mkdir()
+    persona = tmp_path / "runtime" / "persona.txt"
+    persona.write_bytes(b"persona-test")
+    meta = pipeline.new_case(None)
+
+    fake = tmp_path / "opencode"
+    fake.write_text("#!/bin/bash\nexit 0\n")
+    fake.chmod(0o755)
+    from chromly.orchestrator import agents as agents_mod
+
+    monkeypatch.setattr(agents_mod, "find_opencode", lambda: str(fake))
+    monkeypatch.setattr(
+        budget, "check_case", lambda est_cost=2.0, high_score=True: {"allow": True, "model": "m"}
+    )
+    runner.run_case(meta["id"], max_wall=10)
+    con = db.ensure_db()
+    row = con.execute(
+        "SELECT prompt_hash FROM runs WHERE case_id = ? ORDER BY id DESC LIMIT 1", (meta["id"],)
+    ).fetchone()
+    con.close()
+    assert row is not None
+    assert row["prompt_hash"] == hashlib.sha256(b"persona-test").hexdigest()
+
+
+def test_archive_case(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    meta = pipeline.new_case(None)
+    d = pipeline.case_dir(meta["id"])
+    (d / "poc").mkdir(exist_ok=True)
+    (d / "poc" / "poc.js").write_text("x")
+    (d / "agent-output.log").write_text("to" * 100)
+    pipeline.set_state(meta["id"], "VERDICT", verdict="no-bug")
+    res = pipeline.archive_case(meta["id"])
+    assert res["status"] == "archived"
+    assert Path(res["tarball"]).is_file()
+    assert pipeline.load_case(meta["id"])["state"] == "ARCHIVED"
+    assert not (d / "poc").exists()  # phần nặng đã nén
+    assert (d / "meta.json").is_file()  # file nhẹ giữ lại
+    assert pipeline.archive_case(meta["id"])["status"] == "already"
+
+
+def test_archive_rejects_non_terminal(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    meta = pipeline.new_case(None)
+    assert pipeline.archive_case(meta["id"])["status"] == "not-terminal"
+
+
+def test_case_help_alert(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    monkeypatch.setattr(paths, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(farm, "FUZZ_DIR", tmp_path / "store" / "fuzz")
+    monkeypatch.setattr(farm, "STATE_PATH", tmp_path / "store" / "fuzz" / "state.json")
+    monkeypatch.setattr(farm, "LOGS_DIR", tmp_path / "store" / "fuzz" / "logs")
+    from chromly.telemetry import alerts as alerts_mod
+
+    meta = pipeline.new_case(None)
+    pipeline.set_state(meta["id"], "HELP")
+    new = alerts_mod.evaluate()
+    assert any(a["rule"] == "case_help" for a in new)
