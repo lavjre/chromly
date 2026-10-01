@@ -13,10 +13,11 @@ kết luận "unfixed" là bất khả.
   → `STILL-CRASHES` (exit 0) / `CLEAN` (exit 2) / lỗi (exit 1); log + `store/tot/verifications.jsonl`.
 - Case mission tự chèn dòng "d8 ToT … xác nhận unfixed" khi build sẵn sàng.
 **Files:** `chromly/builds/tot.py`, `chromly/builds/args/tot.gn`, `chromly/builds/args.py`, `chromly/cli/app.py`, `chromly/case/runner.py`, `tests/test_tot.py`.
-**Acceptance (chạy sau khi build xong):**
-1. `chromly tot status` → ok, sha = mirror FETCH_HEAD.
-2. `chromly tot verify <một crash upstream-regress đã biết>` → CLEAN (đã fix upstream) —
-   kiểm chứng chiều "đã fix"; bug nào STILL-CRASHES là candidate 0day.
+**Acceptance (đã chạy 2026-10-02):**
+1. `chromly tot status` → ok, sha=8088328b1554 (ToT 01/10 06:27), d8 tồn tại; cây đã revert về snapshot b8ffaab.
+2. `chromly tot verify /tmp/opencode/syn2.js --flags=--nofuzzing` → **STILL-CRASHES** (rc=-5) ✓ (chiều "còn sống").
+3. `chromly tot verify cases/CASE-0004/repro.js` → **CLEAN** (rc=0, 4.4s) ✓ — bug đã-fix-upstream được xác nhận đúng (chiều "đã fix").
+Build: 24m36s cho phần còn lại (resume sau interrupt) + revert; state `store/tot.json` status=ok.
 **Vận hành:** refresh ToT khi cần (trước khi claim report / định kỳ vài ngày). Build ~1-2h
 trên box đang fuzz; tree revert tự động kể cả khi build fail.
 **Giới hạn:** verify chạy với `--allow-natives-syntax --expose-gc --fuzzing` mặc định —

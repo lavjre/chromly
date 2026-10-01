@@ -52,7 +52,11 @@ def main(argv: list[str] | None = None) -> int:
     tot_sub.add_parser("status", help="trạng thái build ToT")
     p_totv = tot_sub.add_parser("verify", help="chạy repro trên ToT d8")
     p_totv.add_argument("target", help="file .js hoặc hash crash")
-    p_totv.add_argument("--flags", default=None, help="flags thêm cho d8 (chuỗi)")
+    p_totv.add_argument(
+        "--flags",
+        default=None,
+        help="flags thêm cho d8; value bắt đầu bằng '--' phải viết dạng --flags=--no-fuzzing",
+    )
 
     p_fuzz = sub.add_parser("fuzz", help="fuzz farm — worker up/down/status (§5.2)")
     fuzz_sub = p_fuzz.add_subparsers(dest="fuzz_cmd")
