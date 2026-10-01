@@ -26,7 +26,9 @@ export PATH="$HOME/.local/share/swiftly/bin:$PATH"
 
 ## Ghi chú thiết kế
 
-- `--jobs=4` = 1 main + 3 thread workers **trong 1 process** (ThreadSync, corpus sync full) — phù hợp 8 vCPU; watchdog restart theo process (M1-04).
+- `--jobs=6` (từ 2026-10-01; env `CHROMLY_FUZZILLI_JOBS` để đổi) = 1 main + 5 thread workers **trong 1 process** (ThreadSync, corpus sync full). Lý do: đo thực tế 0.73 core cho 4 worker — worker bị chặn bởi respawn (timeout 6-8% × kill+spawn ~160ms) chứ không CPU-bound; tăng worker tận dụng phần chờ. Kết quả đo: **~40/s → ~80-110/s** (vẫn dưới tải build ToT). `maxExecsBeforeRespawn=1000` (profile) nên respawn định kỳ không đáng kể — churn chủ yếu từ timeout.
+- REPRL per-exec thật (đo bằng `REPRLRun :load`): p50 ≈ 17ms, p90 ≈ 28ms với corpus program (build fuzzilli dcheck) — nếu exec/s thấp hơn nhiều so với 6/0.02s thì kiểm tra respawn/timeout trước khi nghi máy.
+- `--verify-heap` mặc định **OFF** (fuzzbuild chỉ bật capability; fuzzilli không truyền flag này) — đừng đổ lỗi throughput cho verify-heap.
 - Crash rơi vào `storagePath/crashes/`: mỗi crash = **cặp `.js` (lift JS, ghi TRƯỚC) + `.fzil` (protobuf, ghi SAU)** — nguồn: `Storage.swift::storeProgram` (không phụ thuộc cờ); crash store (M1-05) nhập `.fzil` canonical + `.js` sidecar, và nhập `.js` mồ côi nếu fuzzilli thoát giữa chừng (chỉ có .js).
 - `--exportStatistics` ghi stats định kỳ vào storage — nguồn metrics v0 (M1-07).
 - Multi-machine (sau này): instance tree `root`/`leaf` + `--bindTo`/`--connectTo` (`--corpusSyncMode`).

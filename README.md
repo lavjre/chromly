@@ -18,6 +18,7 @@ chromly fuzz engine --list                        # 16 per-target harness trong 
 chromly fuzz engine --build [--fuzzer regexp]     # vendor libFuzzer + re-link engine (không patch V8)
 chromly fuzz lfuzz --unit lfuzz-<target> --once   # mutation 1 cycle cho bất kỳ harness nào
 chromly fuzz engine --merge --unit lfuzz-parser   # tối giản corpus định kỳ (giữ backup)
+chromly tot build · status · verify <crash|file>  # build ToT + check "còn sống" (unfixed)
 chromly info -w · chromly trace -f                # monitor + trace
 ```
 
