@@ -194,3 +194,27 @@ def test_engine_cmd_list(tmp_path: Path, monkeypatch, capsys) -> None:
     args = type("A", (), {"list": True, "build": False, "fuzzer": None})()
     assert engine.run_engine_cmd(args) == 0
     assert "json" in capsys.readouterr().out
+
+
+def test_merge_corpus_guards(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(engine, "out_dir", lambda: tmp_path / "out")
+    try:
+        engine.merge_corpus("không-hợp-lệ")
+    except ValueError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("phải raise ValueError")
+    try:
+        engine.merge_corpus("lfuzz-regexp")
+    except FileNotFoundError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("phải raise FileNotFoundError")
+
+
+def test_engine_cmd_merge_requires_unit(capsys) -> None:
+    args = type(
+        "A", (), {"list": False, "merge": True, "build": False, "fuzzer": None, "unit": None}
+    )()
+    assert engine.run_engine_cmd(args) == 2
+    assert "--merge" in capsys.readouterr().out

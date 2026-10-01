@@ -81,6 +81,9 @@ def main(argv: list[str] | None = None) -> int:
     p_eng = fuzz_sub.add_parser("engine", help="build libFuzzer engine cho V8 fuzzers (M1-08)")
     p_eng.add_argument("--build", action="store_true", help="build archive + binary engine")
     p_eng.add_argument("--list", action="store_true", help="liệt kê target có trong out/libfuzzer")
+    p_eng.add_argument("--merge", action="store_true", help="tối giản corpus (libFuzzer -merge=1)")
+    p_eng.add_argument("--unit", help="unit cho --merge, vd lfuzz-parser")
+    p_eng.add_argument("--seconds", type=int, default=120, help="thời gian merge (--merge)")
     p_eng.add_argument(
         "--fuzzer",
         action="append",

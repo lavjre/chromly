@@ -345,6 +345,56 @@ def _lfuzz_cmd(
     ]
 
 
+def merge_corpus(unit: str, seconds: int = 120) -> dict:
+    """Tối giản corpus bằng `-merge=1` (chuẩn libFuzzer) — vệ sinh chạy dài hạn.
+
+    Đọc `corpus/` → ghi bộ tối giản sang `corpus-merge/`; thành công thì thay thế
+    (giữ backup `corpus.bak-<ts>`). Nên chạy khi unit đang không fuzz (giữa cycle).
+    """
+    fuzzer = target_for(unit)
+    if fuzzer is None:
+        raise ValueError(f"unit không hợp lệ: {unit}")
+    binary = engine_bin(fuzzer)
+    if not binary.is_file():
+        raise FileNotFoundError(f"thiếu engine binary {binary}")
+    base = unit_dir(unit)
+    corpus = base / "corpus"
+    corpus.mkdir(parents=True, exist_ok=True)
+    stage = base / "corpus-merge"
+    if stage.is_dir():
+        shutil.rmtree(stage)
+    stage.mkdir(parents=True)
+    before = sum(1 for _ in corpus.iterdir())
+    cmd = [
+        str(binary),
+        "-merge=1",
+        f"-max_total_time={seconds}",
+        "-rss_limit_mb=2048",
+        str(stage),
+        str(corpus),
+    ]
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=seconds + 180, env=farm._env()
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "reason": "timeout", "before": before}
+    after = sum(1 for _ in stage.iterdir())
+    if proc.returncode != 0 or after == 0:
+        tail = ((proc.stdout or "") + (proc.stderr or "")).splitlines()[-5:]
+        return {"ok": False, "rc": proc.returncode, "before": before, "after": after, "tail": tail}
+    backup = base / f"corpus.bak-{int(time.time())}"
+    corpus.rename(backup)
+    stage.rename(corpus)
+    return {
+        "ok": True,
+        "before": before,
+        "after": after,
+        "backup": str(backup),
+        "wall_s": None,
+    }
+
+
 def run_lfuzz(
     unit: str,
     seconds: int = 600,
@@ -420,6 +470,22 @@ def run_engine_cmd(args) -> int:
     if getattr(args, "list", False):
         print("\n".join(available_targets()) or "(chưa có out/libfuzzer — build trước)")
         return 0
+    if getattr(args, "merge", False):
+        unit = getattr(args, "unit", None)
+        if not unit:
+            print("usage: chromly fuzz engine --merge --unit lfuzz-<target> [--seconds 120]")
+            return 2
+        res = merge_corpus(unit, seconds=getattr(args, "seconds", 120))
+        if res.get("ok"):
+            print(
+                f"merge {unit}: {res['before']} → {res['after']} file "
+                f"(backup: {Path(res['backup']).name})"
+            )
+            return 0
+        print(f"merge {unit}: FAIL rc={res.get('rc')} {res.get('reason', '')}")
+        for line in res.get("tail", []):
+            print("  ", line)
+        return 1
     if getattr(args, "build", False):
         fuzzers = getattr(args, "fuzzer", None)
         if fuzzers is None:
