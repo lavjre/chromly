@@ -16,6 +16,8 @@ from pathlib import Path
 from chromly.fuzz import farm
 
 EVENTS_PATH = farm.FUZZ_DIR / "events.jsonl"
+# Tuning note 2026-10-01: plan §5.2 ghi 120s; chọn 180s mặc định vì replay bursty gây
+# false-positive kill; fuzzilli riêng 300s (corpus import/GC pause dài). Override qua env.
 HANG_S = float(os.environ.get("CHROMLY_WATCHDOG_HANG_S", "180"))
 HANG_BY_UNIT = {"fuzzilli": 300.0}
 CRASH_LOOP_N = 3
