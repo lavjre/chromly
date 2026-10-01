@@ -449,6 +449,20 @@ def info_snapshot() -> dict:
                 continue
     snap["builds"] = builds
 
+    # ToT verify (M5-04): trạng thái build upstream mới nhất
+    try:
+        from chromly.builds import tot as tot_mod
+
+        st = tot_mod.load_state()
+        if st:
+            age_h = (time.time() - st.get("built_at", 0)) / 3600.0
+            snap["tot"] = (
+                f"{st.get('status')} {str(st.get('sha'))[:12]} age={age_h:.0f}h"
+                f"{'' if tot_mod.d8_ready() else ' (d8 missing)'}"
+            )
+    except Exception:  # noqa: BLE001
+        pass
+
     try:
         from chromly.orchestrator import budget
 
@@ -499,6 +513,8 @@ def render_info(color: bool | None = None) -> str:
     )
     lines.append(f"CRASH   tổng={s['crash_total']} · mới: {crash_bits or '—'}")
     lines.append("BUILD   " + " · ".join(s["builds"] or ["—"]))
+    if s.get("tot"):
+        lines.append("TOT     " + s["tot"])
     lines.append(f"BUDGET  day ${s['budget']['day']:.2f} · tier={s['budget']['tier']}")
     lines.append(f"DISK    {s['disk_free_gb']}G free · alerts(unacked)={s['alerts']}")
     lines.append("── event gần nhất ──")

@@ -1,15 +1,23 @@
-# M2-10 — Differential opt/no-opt (bắt miscompile không-crash)
+# M2-10 — Differential lane (bắt miscompile không-crash) — nâng cấp 2026-10-01
 
-**Status:** done
-**Deliverable:** `chromly fuzz diffopt [--limit N] [--build release] [--timeout S] [--loop]`:
-- Lấy mẫu program (.js sidecar corpus fuzzilli — đã lift sẵn, 18.7k cặp `.fzil/.js`).
-- Chạy mỗi program trên d8 2 cấu hình: **A mặc định** (JIT đầy đủ) vs **B `--no-opt`**.
-- Chỉ báo DIFF khi A/B khác (rc hoặc stdout) VÀ mỗi bên tái lập được (chạy lại khớp) —
-  lọc nondeterminism (Date/random/địa chỉ crash).
-- Artifact: `store/fuzz/diffopt/<ts>/<n>_{program.js,a1,a2,b1,b2,meta.json}` + `last.json`.
-- Aux `diffopt` trong supervisor: 1000 program/ngày.
-**Files:** `chromly/fuzz/diffopt.py`, `chromly/fuzz/farm.py`, `chromly/cli/app.py`, `chromly/orchestrator/supervisor.py`, `tests/test_diffopt.py`, `acceptance/M2-diffopt.sh`
-**Acceptance:** `bash acceptance/M2-diffopt.sh` → 4/4 (unit compare/integration + chạy thật sampled≥1 + last.json).
-**Evidence:** 100 program/8.7s (→ 1000/ngày ≈ 1.5'), diffs=0 lượt đầu (corpus hiện tại sạch opt-diff).
-**Out of scope:** auto-case cho diff (khi diff đầu tiên nổ — follow-up); diff đa cấu hình (jitless/maglev) sau.
-**Phụ thuộc:** out/release (M0-04) · corpus fuzzilli (M1).
+**Status:** done (lane liên tục từ 2026-10-01)
+**Deliverable:** `chromly fuzz diffopt [--limit N] [--seconds S] [--build release] [--timeout S] [--loop] [--interval S]`:
+- Quét **tuần tự** corpus fuzzilli bằng cursor có trạng thái (`state.json`) — không bỏ sót
+  file mới, phủ hết corpus theo thời gian; budget `--seconds` mỗi cycle.
+- Axis luân phiên: `--no-opt` | `--no-sparkplug` | `--no-maglev` | `--deopt-every-n-times=100`
+  (bỏ `--jitless`: khác biệt feature Worker → FP lớp thật, gặp 2026-10-01).
+- Program chạy với `--fuzzing` **đúng môi trường corpus được sinh** — thiếu flag là lớp FP
+  warning-spam/FATAL giả (94 FP/400 ở lần chạy đầu).
+- Normalize địa chỉ heap trong output; confirm **3 lần** cả hai bên (lọc race kiểu Worker
+  flush error); lọc timeout/OOM (không so sánh được).
+- Dedup cross-sweep (`found.json`); finding → crash store (`source='diffopt'`,
+  `miscompile-diff` sev4 / `release-crash` sev5) + `store/triage/<hash>/` (repro + hướng dẫn
+  A/B verify) → info/triage/case nhìn thấy.
+- Aux supervisor: loop 540s/120s (trước: 1000 program/ngày, kết quả nằm im).
+**Files:** `chromly/fuzz/diffopt.py`, `chromly/orchestrator/supervisor.py`, `chromly/cli/app.py`, `tests/test_diffopt.py`
+**Acceptance:** `bash acceptance/M2-diffopt.sh` (summary key `sampled`/`diffs` giữ nguyên).
+**Evidence:** 600 program → 0 diff/0 crash sau khi sửa 3 lớp FP (94 → 1 → 0); tốc độ ~5.5 program/s
+(dưới tải build) → 1 cycle 540s ≈ 3000 program; sweep full corpus (~20k) ≈ 6-7 cycle.
+**Out of scope (follow-up nếu diff thật đầu tiên nổ):** auto-case cho diff miscompile cần
+brief A/B-aware; wasm-specific axes (`--no-liftoff`).
+**Phụ thuộc:** out/release (M0-04) · corpus fuzzilli (M1) · crash store (M1-05).
