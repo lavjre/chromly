@@ -96,10 +96,11 @@ def parse_plugin_events(since: float) -> list[Event]:
         kind = rec.get("event", "?")
         if kind == "plugin-loaded":
             continue  # bootstrap noise — không lên feed
+        cmd = str(rec.get("cmd", "")).replace("\n", " ")
         if kind == "shell":
-            text = f"{kind} ({rec.get('cwd', '?')}) {str(rec.get('cmd', ''))[:90]}"
+            text = f"{kind} ({rec.get('cwd', '?')}) {cmd[:90]}"
         elif kind == "deny":
-            text = f"DENY {rec.get('scope', '?')} — {str(rec.get('cmd', ''))[:90]}"
+            text = f"DENY {rec.get('scope', '?')} — {cmd[:90]}"
         else:
             text = f"{kind} {rec.get('directory', '')}"
         out.append({"ts": ts, "source": kind if kind != "deny" else "deny", "text": text})
@@ -295,10 +296,11 @@ def collect(since: float, include_aux: bool = True, sources: set[str] | None = N
 def render_event(e: Event, color: bool | None = None) -> str:
     color = _color_enabled() if color is None else color
     tag = f"{e['source']:<9}"
+    text = str(e["text"]).replace("\n", " ")  # feed 1 dòng/event, không vỡ layout
     if color:
         c = SOURCE_COLORS.get(e["source"], "")
-        return f"{_fmt_ts(e['ts'])} {c}[{tag}]{_RESET} {e['text']}"
-    return f"{_fmt_ts(e['ts'])} [{tag}] {e['text']}"
+        return f"{_fmt_ts(e['ts'])} {c}[{tag}]{_RESET} {text}"
+    return f"{_fmt_ts(e['ts'])} [{tag}] {text}"
 
 
 def run_trace(

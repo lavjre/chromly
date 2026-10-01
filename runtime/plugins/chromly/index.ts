@@ -84,7 +84,7 @@ export default {
             scope: agentScope ? "agent" : "global",
             action: event.action,
             why: hit.why,
-            cmd: String(resource).slice(0, 300),
+            cmd: String(resource).replace(/\s+/g, " ").slice(0, 300),
           })
           return
         }
@@ -92,7 +92,8 @@ export default {
     })
 
     await ctx.shell.hook("create.before", (event) => {
-      log({ event: "shell", cwd: event.cwd, cmd: String(event.command).slice(0, 300) })
+      const flat = String(event.command).replace(/\s+/g, " ").trim()
+      log({ event: "shell", cwd: event.cwd, cmd: flat.slice(0, 300) })
     })
 
     log({
