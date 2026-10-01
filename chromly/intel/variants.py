@@ -38,6 +38,35 @@ FLAG_CONFLICT_MARKERS = (
     "Flag processing error",
     "Contradictory value for readonly flag",
 )
+# d8 (không --fuzzing) CHECK(CheckMarkedForManualOptimization) khi %Optimize* không có
+# %PrepareFunctionForOptimization trước — lỗi generator, KHÔNG phải bug V8
+# (bài học CASE-0005: variant TPT/CPT crash giả, root cause runtime-test.cc:357).
+MANUAL_OPT_FP_MARKERS = ("CheckMarkedForManualOptimization",)
+MANUAL_OPT_CALLS = (
+    "%OptimizeFunctionOnNextCall",
+    "%OptimizeMaglevOnNextCall",
+    "%OptimizeOsr",
+)
+_PREP_RE = re.compile(r"%PrepareFunctionForOptimization\(\s*([A-Za-z_$][\w$]*)\s*\)")
+
+
+def _ensure_manual_opt_prepared(js: str) -> str:
+    """Chèn `%PrepareFunctionForOptimization(f)` trước mọi `%Optimize*(f)` nếu thiếu.
+
+    d8 không chạy `--fuzzing` sẽ CHECK-fatal khi Optimize chưa prepare (`runtime-test.cc`).
+    Đây là crash giả của generator — chuẩn hoá để không đốt case pipeline.
+    """
+    out = js
+    for call in MANUAL_OPT_CALLS:
+        pat = re.compile(re.escape(call) + r"\(\s*([A-Za-z_$][\w$]*)?\s*\)")
+        for m in reversed(list(pat.finditer(out))):
+            name = m.group(1)
+            if not name:
+                continue
+            if any(p.group(1) == name and p.end() <= m.start() for p in _PREP_RE.finditer(out)):
+                continue
+            out = out[: m.start()] + f"%PrepareFunctionForOptimization({name}); " + out[m.start() :]
+    return out
 
 
 def _extract_run_flags(test: Path) -> list[str]:
@@ -87,8 +116,9 @@ def generate_for(sha: str) -> list[dict]:
             f"// chromly variant — {v.get('title', '?')} "
             f"(confidence: {v.get('confidence', '?')})\n"
             f"// nguồn: store/intel/{sha}/variants.json — sinh tự động, review trước khi tin\n"
+            f"// note: %Optimize* đã được chuẩn hoá kèm %PrepareFunctionForOptimization\n"
         )
-        (out_dir / fname).write_text(header + test_js + "\n")
+        (out_dir / fname).write_text(header + _ensure_manual_opt_prepared(test_js) + "\n")
         generated.append({"file": fname, "title": v.get("title", "?"), "variant": v})
     return generated
 
@@ -128,6 +158,8 @@ def run_test(d8: Path, test: Path) -> dict:
         outcome = "oom"  # test tự ép OOM → không phải crash (FP filter §5.4)
     elif any(m in full for m in FLAG_CONFLICT_MARKERS):
         outcome = "flag-conflict"  # cờ xung đột build → không chạy được (FP filter)
+    elif any(m in full for m in MANUAL_OPT_FP_MARKERS):
+        outcome = "fp-manual-opt"  # %Optimize* thiếu prepare — lỗi generator (FP filter)
     elif MISSING_FLAG_RE.search(full) and rc in (0, 1):
         outcome = "skipped"  # thiếu flag không tự thêm được — không tính là pass
     elif rc in CRASH_CODES or rc < 0:
@@ -241,6 +273,15 @@ def run_pending_variants(limit: int = 5) -> list[dict]:
     return out
 
 
+def _resolve_sha(sha: str) -> str | None:
+    """Chấp nhận sha đầy đủ hoặc prefix ngắn — trả tên dir intel khớp (duy nhất)."""
+    base = intel_dir()
+    if (base / sha).is_dir():
+        return sha
+    matches = [p.name for p in base.iterdir() if p.is_dir() and p.name.startswith(sha)]
+    return matches[0] if len(matches) == 1 else None
+
+
 def run_variants_cmd(args) -> int:
     sha = getattr(args, "sha", None)
     if not sha:
@@ -256,7 +297,13 @@ def run_variants_cmd(args) -> int:
             print("variant: không có commit reviewed")
             return 0
         sha = row["commit"]
-    summary = run_variants(sha)
+    resolved = _resolve_sha(sha)
+    if resolved is None:
+        print(
+            f"variant: không thấy commit {sha} trong store/intel (prefix không khớp/không duy nhất)"
+        )
+        return 1
+    summary = run_variants(resolved)
     print(
         f"variant {sha[:12]}: generated={summary['generated']} builds={summary['builds']} "
         f"crashes={sum(1 for r in summary['results'] if r['outcome'] == 'crash')}"

@@ -121,3 +121,45 @@ def test_variant_missing_flag_still_skipped(monkeypatch, tmp_path: Path) -> None
     test.write_text("print(1);\n")
     res = variants.run_test(d8, test)
     assert res["outcome"] == "skipped"
+
+
+# ── manual-opt normalization + FP filter (bài học CASE-0005) ──
+
+
+def test_normalize_inserts_prepare() -> None:
+    js = "function hot(x){return x|0;}\nhot(1);\n%OptimizeFunctionOnNextCall(hot);\nhot(2);\n"
+    out = variants._ensure_manual_opt_prepared(js)
+    assert out.index("%PrepareFunctionForOptimization(hot)") < out.index(
+        "%OptimizeFunctionOnNextCall(hot)"
+    )
+
+
+def test_normalize_keeps_existing_prepare() -> None:
+    js = "%PrepareFunctionForOptimization(hot);\n%OptimizeFunctionOnNextCall(hot);\n"
+    assert variants._ensure_manual_opt_prepared(js) == js
+
+
+def test_normalize_multiple_calls() -> None:
+    js = "%OptimizeFunctionOnNextCall(a);\n%OptimizeMaglevOnNextCall(b);\n"
+    out = variants._ensure_manual_opt_prepared(js)
+    assert "%PrepareFunctionForOptimization(a)" in out
+    assert "%PrepareFunctionForOptimization(b)" in out
+
+
+def test_normalize_skips_no_arg() -> None:
+    js = "%OptimizeOsr();\n"
+    assert variants._ensure_manual_opt_prepared(js) == js
+
+
+def test_manual_opt_fp_filter(monkeypatch, tmp_path) -> None:
+    from pathlib import Path as _P
+
+    def fake_run(d8, test, extra):
+        return 133, (
+            "# Fatal error in ../../src/runtime/runtime-test.cc, line 357\n"
+            "Check failed: CheckMarkedForManualOptimization(isolate, function).\n"
+        )
+
+    monkeypatch.setattr(variants, "_run_once", fake_run)
+    res = variants.run_test(_P("/bin/true"), _P("/tmp/fake.js"))
+    assert res["outcome"] == "fp-manual-opt"

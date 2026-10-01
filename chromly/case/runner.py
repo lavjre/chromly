@@ -202,6 +202,23 @@ def _acquire_auto_lock():
     return fh
 
 
+def _mark_crash_fp(case_id: str) -> None:
+    """Verdict no-bug → đánh dấu crash gắn case = 'fp' (không re-case, báo cáo đúng)."""
+    mp = pipeline.case_dir(case_id) / "meta.json"
+    try:
+        crash_hash = json.loads(mp.read_text()).get("crash_hash")
+    except (OSError, json.JSONDecodeError):
+        return
+    if not crash_hash:
+        return
+    con = db.ensure_db()
+    try:
+        with con:
+            con.execute("UPDATE crashes SET state = 'fp' WHERE hash = ?", (crash_hash,))
+    finally:
+        con.close()
+
+
 def _case_high_score(case_id: str) -> bool:
     """True nếu case gắn crash severity >= HIGH_SCORE_MIN (điều kiện budget day-cap)."""
     mp = pipeline.case_dir(case_id) / "meta.json"
@@ -289,6 +306,8 @@ def _run_case_inner(
             break
 
     set_state(case_id, state, verdict=verdict, budget_used=wall)
+    if verdict == "no-bug":
+        _mark_crash_fp(case_id)
     if resume_session or count_resume:
         meta = pipeline.load_case(case_id)
         meta["resumes"] = int(meta.get("resumes", 0)) + 1

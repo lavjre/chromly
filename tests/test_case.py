@@ -371,3 +371,20 @@ def test_acquire_auto_lock_exclusive(monkeypatch, tmp_path: Path) -> None:
     lock2 = runner._acquire_auto_lock()
     assert lock2 is None
     lock1.close()
+
+
+def test_mark_crash_fp(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    con = db.ensure_db()
+    with con:
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, state) VALUES (?, 'x', 5, 'triaged')",
+            ("b" * 64,),
+        )
+    con.close()
+    meta = pipeline.new_case(("b" * 64)[:12], source="auto")
+    runner._mark_crash_fp(meta["id"])
+    con = db.ensure_db()
+    st = con.execute("SELECT state FROM crashes WHERE hash = ?", ("b" * 64,)).fetchone()["state"]
+    con.close()
+    assert st == "fp"
