@@ -72,6 +72,14 @@ def calibrate(bug: dict) -> dict:
     patch_file = out_dir / "revert.patch"
     patch_file.write_text(patch + "\n")  # _git strip()→ thiếu newline cuối = "corrupt patch"
     rc, out = _git(["apply", "-R", str(patch_file)], v8)
+    if rc != 0:
+        # Fix thường kèm test file mới (không tồn tại trong checkout) → hunk tạo file
+        # không reverse-apply được. Thử lại chỉ revert phần src (bỏ test/status).
+        rc2, out2 = _git(
+            ["apply", "-R", "--exclude=test/*", "--exclude=*mjsunit.status", str(patch_file)], v8
+        )
+        if rc2 == 0:
+            rc, out = rc2, out2
     revert_applied = rc == 0
     if not revert_applied:
         # Fix có thể MỚI hơn checkout (bug đang hiện diện trong cây) — tiếp tục không revert.

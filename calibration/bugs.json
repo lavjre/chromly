@@ -78,5 +78,22 @@
       "--turbolev",
       "--max-turbolev-eager-inlined-bytecode-size=0"
     ]
+  },
+  {
+    "id": "calib-539984773",
+    "surface": "turboshaft",
+    "bug_class": "oob-read",
+    "difficulty": 3,
+    "fix_sha": "966041bcee4f6e40832e75ffe91d441665b82503",
+    "note": "revert fix OK (mode --exclude=test/*) nhưng KHÔNG tái hiện trên snapshot (revert drift ~4 tuần; race không còn trigger qua choreography upstream) → status no-crash, loại khỏi ladder",
+    "repro_js": "// chromly calibration repro — regress-539984773 (turboshaft StringAt: OOB read khi\n// constant receiver transition sang ThinString giữa snapshot map/representation).\n// Nguồn: test/mjsunit/turboshaft/regress-539984773.js @ fix 966041bcee (fix có trong\n// checkout → revert để tái hiện).\n// Chạy: d8 --allow-natives-syntax --expose-gc --turbofan --no-turbolev \\\n//   --no-optimize-on-next-call-optimizes-to-maglev --concurrent-recompilation repro.js\n\nfunction assertEquals(a, b) { if (a !== b) throw new Error(\"assertEquals: \" + a + \" !== \" + b); }\nfunction assertTrue(v) { if (!v) throw new Error(\"assertTrue failed\"); }\n\nfunction makeSeqOneByte(seed) {\n  const chars = [];\n  for (let i = 0; i < 64; ++i) chars.push(65 + ((seed + i) % 23));\n  return String.fromCharCode.apply(null, chars);\n}\n\n// Ensure canonicalTwin is internalized in the string table first.\nconst canonicalTwin = makeSeqOneByte(0);\n(new Map()).has(canonicalTwin);\n\n// Create an identical but non-internalized SeqOneByteString.\nconst key = makeSeqOneByte(0);\n\nfunction constantCharCodeAt(i) {\n  return key.charCodeAt(i);\n}\n\nconst expected = [];\nfor (let i = 0; i < 64; ++i) expected.push(key.charCodeAt(i));\n\n%PrepareFunctionForOptimization(constantCharCodeAt);\nconstantCharCodeAt(8);\nconstantCharCodeAt(8);\n\n// Block background compilation at TurboshaftMachineLowering phase.\n%BlockAt('TurboshaftMachineLowering', 10000);\n%OptimizeFunctionOnNextCall(constantCharCodeAt, \"concurrent\");\nconstantCharCodeAt(8);\n\n// Wait until background compiler thread reaches TurboshaftMachineLowering.\nassertTrue(%WaitUntilBlocked('TurboshaftMachineLowering', 10000));\n\n// Internalize 'key' on the main thread while background lowering is stopped.\n// Since canonicalTwin is in the string table, 'key' transitions in-place\n// from SeqOneByteString to a 16-byte ThinString.\n(new Map()).has(key);\ngc();\n\n// Resume background compiler thread and wait for compilation to finish.\nassertTrue(%Resume('TurboshaftMachineLowering'));\n%WaitForBackgroundOptimization();\n\n// Verify that all character codes are correct and no out-of-bounds read occurred.\nfor (let i = 0; i < 64; ++i) {\n  assertEquals(expected[i], constantCharCodeAt(i));\n}\n",
+    "repro_flags": [
+      "--expose-gc",
+      "--allow-natives-syntax",
+      "--turbofan",
+      "--no-turbolev",
+      "--no-optimize-on-next-call-optimizes-to-maglev",
+      "--concurrent-recompilation"
+    ]
   }
 ]
