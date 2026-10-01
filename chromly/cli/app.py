@@ -80,14 +80,18 @@ def main(argv: list[str] | None = None) -> int:
     p_lf.add_argument("--once", action="store_true")
     p_eng = fuzz_sub.add_parser("engine", help="build libFuzzer engine cho V8 fuzzers (M1-08)")
     p_eng.add_argument("--build", action="store_true", help="build archive + binary engine")
+    p_eng.add_argument("--list", action="store_true", help="liệt kê target có trong out/libfuzzer")
     p_eng.add_argument(
         "--fuzzer",
         action="append",
-        choices=["parser", "wasm_module"],
-        help="chỉ build fuzzer này (mặc định: tất cả)",
+        help="chỉ build target này, vd parser|wasm_module|regexp (mặc định: 2 lane chính)",
     )
     p_lz = fuzz_sub.add_parser("lfuzz", help="engine loop: mutation + coverage (M1-08)")
-    p_lz.add_argument("--unit", required=True, choices=["lfuzz-parser", "lfuzz-wasm"])
+    p_lz.add_argument(
+        "--unit",
+        required=True,
+        help="lfuzz-parser | lfuzz-wasm | lfuzz-<target> (mọi target có trong out)",
+    )
     p_lz.add_argument("--seconds", type=int, default=600, help="thời gian mỗi cycle")
     p_lz.add_argument("--interval", type=float, default=2.0, help="giây nghỉ giữa cycle")
     p_lz.add_argument("--once", action="store_true")

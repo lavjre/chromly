@@ -12,6 +12,7 @@ Không patch nguồn V8: chỉ đọc ninja file + re-link.
 
 from __future__ import annotations
 
+import contextlib
 import re
 import shlex
 import shutil
@@ -24,7 +25,8 @@ from chromly import paths
 from chromly.fuzz import farm
 
 BUILD_DIR = "libfuzzer"
-# unit name → tên fuzzer V8 (v8_simple_<name>_fuzzer)
+# Map unit mặc định ↔ tên fuzzer V8 (v8_simple_<name>_fuzzer). Target khác dùng
+# trực tiếp `lfuzz-<target>` — xem target_for()/available_targets().
 LFUZZ_UNITS: dict[str, str] = {
     "lfuzz-parser": "parser",
     "lfuzz-wasm": "wasm_module",
@@ -54,6 +56,34 @@ def engine_bin(fuzzer: str) -> Path:
     return out_dir() / f"v8_engine_{fuzzer}_fuzzer"
 
 
+def available_targets() -> list[str]:
+    """Mọi fuzzer target có link edge trong out/libfuzzer (v8_simple_<t>_fuzzer.ninja)."""
+    obj = out_dir() / "obj"
+    if not obj.is_dir():
+        return []
+    names = []
+    for p in sorted(obj.glob("v8_simple_*_fuzzer.ninja")):
+        names.append(p.name[len("v8_simple_") : -len("_fuzzer.ninja")])
+    return names
+
+
+def unit_for(target: str) -> str:
+    """Tên unit cho target — giữ tên ngắn cho 2 lane mặc định."""
+    for unit, t in LFUZZ_UNITS.items():
+        if t == target:
+            return unit
+    return f"lfuzz-{target}"
+
+
+def target_for(unit: str) -> str | None:
+    """Unit → tên fuzzer; None nếu không hợp lệ."""
+    if unit in LFUZZ_UNITS:
+        return LFUZZ_UNITS[unit]
+    if unit.startswith("lfuzz-") and len(unit) > len("lfuzz-"):
+        return unit[len("lfuzz-") :]
+    return None
+
+
 def fuzzer_lib() -> Path:
     """Archive libFuzzer: ưu tiên bản vendor (ABI libc++, khớp toolchain V8)."""
     local = FUZZER_ARCHIVE_DIR / "libFuzzer.a"
@@ -64,7 +94,8 @@ def fuzzer_lib() -> Path:
         if p.is_file():
             return p
     raise FileNotFoundError(
-        "chưa có libFuzzer.a — chạy `chromly fuzz engine --build` (tự compile từ third_party/libfuzzer)"
+        "chưa có libFuzzer.a — chạy `chromly fuzz engine --build` "
+        "(tự compile từ third_party/libfuzzer)"
     )
 
 
@@ -75,9 +106,7 @@ def ensure_fuzzer_archive(force: bool = False) -> Path:
     libstdc++ + glibc mới (__cxx11, __isoc23_*) — không khớp binary V8.
     """
     archive = FUZZER_ARCHIVE_DIR / "libFuzzer.a"
-    srcs = sorted(
-        p for p in FUZZER_SRC_DIR.glob("Fuzzer*.cpp") if p.name not in FUZZER_EXCLUDE
-    )
+    srcs = sorted(p for p in FUZZER_SRC_DIR.glob("Fuzzer*.cpp") if p.name not in FUZZER_EXCLUDE)
     if not srcs:
         raise FileNotFoundError(f"thiếu source libFuzzer trong {FUZZER_SRC_DIR}")
     if (
@@ -90,10 +119,8 @@ def ensure_fuzzer_archive(force: bool = False) -> Path:
     clang = paths.V8_ROOT / "third_party" / "llvm-build" / "Release+Asserts" / "bin" / "clang++"
     ar = paths.V8_ROOT / "third_party" / "llvm-build" / "Release+Asserts" / "bin" / "llvm-ar"
     defines: list[str] = []
-    try:
+    with contextlib.suppress(FileNotFoundError, ValueError):
         defines = shlex.split(_parse_ninja("parser").get("defines", ""))
-    except (FileNotFoundError, ValueError):
-        pass
     flags = [
         "--target=x86_64-unknown-linux-gnu",
         "-fPIC",
@@ -166,9 +193,7 @@ def _parse_ninja(target: str) -> dict:
         m = re.match(r"^\s*(\w+) = (.*)$", line)
         if m and m.group(1) not in out:
             out[m.group(1)] = _unescape(m.group(2).strip())
-    link_re = re.compile(
-        rf"^build \./v8_simple_{re.escape(target)}_fuzzer: link (.*)$"
-    )
+    link_re = re.compile(rf"^build \./v8_simple_{re.escape(target)}_fuzzer: link (.*)$")
     for line in text.splitlines():
         m = link_re.match(line)
         if m:
@@ -202,6 +227,11 @@ def build_engine(fuzzer: str = "parser") -> dict:
     clang = paths.V8_ROOT / "third_party" / "llvm-build" / "Release+Asserts" / "bin" / "clang++"
     outp = engine_bin(fuzzer)
     archive = ensure_fuzzer_archive()
+    extra = (
+        [str(p) for p in SYSTEM_CXX_RUNTIME] + [_ALLOW_SHLIB_UNDEF]
+        if _needs_system_cxx(archive)
+        else []
+    )
     cmd = [
         str(clang),
         *ldflags,
@@ -212,7 +242,7 @@ def build_engine(fuzzer: str = "parser") -> dict:
         *solibs,
         *libs,
         str(archive),
-        *([str(p) for p in SYSTEM_CXX_RUNTIME] + [_ALLOW_SHLIB_UNDEF] if _needs_system_cxx(archive) else []),
+        *extra,
         "-Wl,--start-group",
         *rlibs,
         "-Wl,--end-group",
@@ -260,16 +290,21 @@ def unit_dir(unit: str) -> Path:
 
 
 def seed_corpus(unit: str, cap: int = 3000) -> int:
-    """Seed corpus engine: kế thừa corpus replay (mjsunit + delta) nếu engine chưa có.
+    """Seed corpus engine: kế thừa corpus replay (mjsunit + delta) cho parser/wasm.
 
-    Idempotent — chỉ copy file còn thiếu. Trả số file mới thêm.
+    Target khác không có corpus nguồn → engine tự sinh. Idempotent — trả số file mới.
     """
     from chromly.fuzz import replay
 
-    fuzzer = LFUZZ_UNITS.get(unit)
+    fuzzer = target_for(unit)
     if fuzzer is None:
         return 0
-    replay_unit = "libfuzzer-parser" if fuzzer == "parser" else "libfuzzer-wasm"
+    replay_unit = {
+        "parser": "libfuzzer-parser",
+        "wasm_module": "libfuzzer-wasm",
+    }.get(fuzzer)
+    if replay_unit is None:
+        return 0
     replay.seed_corpus(replay_unit)  # top-up delta + mjsunit (idempotent)
     rsrc = farm.FUZZ_DIR / replay_unit / "corpus"
     dest = unit_dir(unit) / "corpus"
@@ -322,13 +357,19 @@ def run_lfuzz(
     Cycle = 1 tiến trình engine `-max_total_time=seconds`; stream pulse ra log
     (farm parse `exec/s:` + watchdog thấy hoạt động). rc=77 = crash (artifact).
     """
-    fuzzer = LFUZZ_UNITS.get(unit)
+    fuzzer = target_for(unit)
     if fuzzer is None:
-        print(f"unit không hợp lệ: {unit} (chọn: {', '.join(LFUZZ_UNITS)})", flush=True)
+        print(
+            f"unit không hợp lệ: {unit} (mặc định: {', '.join(LFUZZ_UNITS)}; "
+            f"target khác: lfuzz-<target>, xem `chromly fuzz engine --list`)",
+            flush=True,
+        )
         return 2
     binary = engine_bin(fuzzer)
     if not binary.is_file():
-        print(f"thiếu engine binary {binary} — chạy `chromly fuzz engine --build` trước", flush=True)
+        print(
+            f"thiếu engine binary {binary} — chạy `chromly fuzz engine --build` trước", flush=True
+        )
         return 1
     base = unit_dir(unit)
     corpus = base / "corpus"
@@ -375,13 +416,22 @@ def run_lfuzz(
         time.sleep(interval)
 
 
-
 def run_engine_cmd(args) -> int:
+    if getattr(args, "list", False):
+        print("\n".join(available_targets()) or "(chưa có out/libfuzzer — build trước)")
+        return 0
     if getattr(args, "build", False):
-        fuzzers = getattr(args, "fuzzer", None) or sorted(set(LFUZZ_UNITS.values()))
+        fuzzers = getattr(args, "fuzzer", None)
+        if fuzzers is None:
+            fuzzers = sorted(set(LFUZZ_UNITS.values()))
         rc = 0
         for f in fuzzers:
-            res = build_engine(f)
+            try:
+                res = build_engine(f)
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"engine {f}: FAIL — {exc}", flush=True)
+                rc = 1
+                continue
             print(
                 f"engine {f}: {'OK' if res['ok'] else 'FAIL'} ({res['wall_s']}s) → {res['bin']}",
                 flush=True,
@@ -390,14 +440,17 @@ def run_engine_cmd(args) -> int:
                 print("  tail:", *res.get("log_tail", []), sep="\n    ", flush=True)
                 rc = 1
         return rc
-    print("usage: chromly fuzz engine --build [--fuzzer parser|wasm_module]")
+    print(
+        "usage: chromly fuzz engine --build [--fuzzer TARGET ...] | --list\n"
+        f"  target mặc định: {', '.join(sorted(set(LFUZZ_UNITS.values())))}"
+    )
     return 2
 
 
 def run_lfuzz_cmd(args) -> int:
     unit = getattr(args, "unit", None)
     if not unit:
-        print("usage: chromly fuzz lfuzz --unit lfuzz-parser|lfuzz-wasm")
+        print("usage: chromly fuzz lfuzz --unit lfuzz-parser|lfuzz-wasm|lfuzz-<target>")
         return 2
     return run_lfuzz(
         unit,

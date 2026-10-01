@@ -12,8 +12,8 @@ libs = builtins.a -ldl -lpthread
 solibs = ./libsanitizer_shared_hooks.so
 rlibs = a.rlib b.rlib
 
-build obj/v8_simple_parser_fuzzer/fuzzer.o obj/v8_simple_parser_fuzzer/fuzzer.dwo: cxx ../../test/fuzzer/fuzzer.cc || phony/x
-build ./v8_simple_parser_fuzzer: link obj/v8_simple_parser_fuzzer/fuzzer.o obj/parser_fuzzer/parser.o obj/foo.a | ./hooks.so.TOC || phony/y
+build obj/spf/fuzzer.dwo: cxx ../../test/fuzzer/fuzzer.cc || p/x
+build ./v8_simple_parser_fuzzer: link obj/spf/fuzzer.o obj/p/parser.o obj/foo.a | ./hooks.so.TOC
 """
 
 
@@ -36,11 +36,7 @@ def test_parse_ninja(tmp_path: Path, monkeypatch) -> None:
     parsed = engine._parse_ninja("parser")
     # binding kiểu edge (thụt lề) đọc được
     assert parsed["libs"] == "builtins.a -ldl -lpthread"
-    assert parsed["_explicit"] == [
-        "obj/v8_simple_parser_fuzzer/fuzzer.o",
-        "obj/parser_fuzzer/parser.o",
-        "obj/foo.a",
-    ]
+    assert parsed["_explicit"] == ["obj/spf/fuzzer.o", "obj/p/parser.o", "obj/foo.a"]
     assert parsed["_implicit"] == ["./hooks.so.TOC"]
     # ninja `$$` → `$`; shlex ăn `\$` → token rpath đúng
     assert shlex.split(parsed["ldflags"]) == [
@@ -168,3 +164,33 @@ def test_execs_regex_matches_engine_pulse() -> None:
     line = "#1843\tNEW    cov: 14255 ft: 31250 corp: 299/281Kb lim: 2061 exec/s: 307 rss: 352Mb"
     m = farm._EXECS_RE.search(line)
     assert m is not None and float(m.group(1)) == 307.0
+
+
+def test_available_targets(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "out"
+    obj = out / "obj"
+    obj.mkdir(parents=True)
+    for t in ("parser", "wasm_module", "regexp"):
+        (obj / f"v8_simple_{t}_fuzzer.ninja").write_text("build x: link\n")
+    monkeypatch.setattr(engine, "out_dir", lambda: out)
+    assert engine.available_targets() == ["parser", "regexp", "wasm_module"]
+
+
+def test_unit_target_mapping() -> None:
+    assert engine.unit_for("parser") == "lfuzz-parser"
+    assert engine.unit_for("wasm_module") == "lfuzz-wasm"
+    assert engine.unit_for("regexp") == "lfuzz-regexp"
+    assert engine.target_for("lfuzz-parser") == "parser"
+    assert engine.target_for("lfuzz-regexp") == "regexp"
+    assert engine.target_for("khác") is None
+    assert engine.target_for("lfuzz-") is None
+
+
+def test_engine_cmd_list(tmp_path: Path, monkeypatch, capsys) -> None:
+    out = tmp_path / "out"
+    (out / "obj").mkdir(parents=True)
+    (out / "obj" / "v8_simple_json_fuzzer.ninja").write_text("build x: link\n")
+    monkeypatch.setattr(engine, "out_dir", lambda: out)
+    args = type("A", (), {"list": True, "build": False, "fuzzer": None})()
+    assert engine.run_engine_cmd(args) == 0
+    assert "json" in capsys.readouterr().out

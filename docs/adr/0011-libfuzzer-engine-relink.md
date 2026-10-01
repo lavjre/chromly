@@ -18,6 +18,7 @@ Khảo sát lại hiện trường (kết quả thay đổi quyết định):
 2. **Vendor source libFuzzer** (`third_party/libfuzzer/`, llvmorg-21.1.0 `compiler-rt/lib/fuzzer`; loại `FuzzerInterceptors.cpp` vì ASAN đã có interceptor riêng), compile bằng đúng toolchain V8 (clang 24 bundled + libc++ headers `third_party/libc++/src` + sysroot bullseye) → `build/libfuzzer/libFuzzer.a`. ABI khớp tuyệt đối; tái lập offline.
 3. Binary engine `out/libfuzzer/v8_engine_{parser,wasm_module}_fuzzer`; wrapper `chromly fuzz lfuzz --unit lfuzz-{parser,wasm}` — loop cycle `-max_total_time=600`, artifact về `store/fuzz/<unit>/artifacts/` (ingest sẵn có).
 4. Farm mặc định = fuzzilli + 2 engine units (`engine_units()`). Replay M1-03 v0 giữ làm fallback (`chromly fuzz lfreplay`), không thuộc default.
+5. **Target-agnostic (custom harness per-target):** mọi `v8_simple_<t>_fuzzer` có trong `out/libfuzzer` đều dùng được — `chromly fuzz engine --list` (16 target đang có) · `--build --fuzzer <t>` · `lfuzz --unit lfuzz-<t>`. 2 lane parser/wasm là default; target mới chỉ cần build + trỏ unit (không cần động vào code).
 
 ## Hệ quả
 
