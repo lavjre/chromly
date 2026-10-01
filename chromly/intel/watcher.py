@@ -110,7 +110,8 @@ def _load_state() -> dict:
             # migrate format cũ (top-level) → {"v8": {...}}
             if "last_sha" in st or "last_poll" in st or "last_lag_hours" in st:
                 v8 = {k: st.pop(k) for k in ("last_sha", "last_poll", "last_lag_hours") if k in st}
-                st["v8"] = v8
+                # merge: section v8 hiện có thắng khi trùng key (không ghi đè mất dữ liệu mới)
+                st["v8"] = {**v8, **st.get("v8", {})}
             return st
         except json.JSONDecodeError:
             pass

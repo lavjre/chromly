@@ -24,7 +24,7 @@ rev = subprocess.run(
     text=True,
 ).stdout.strip()
 st = watcher._load_state()
-st["last_sha"] = rev
+st.setdefault("v8", {})["last_sha"] = rev
 watcher._save_state(st)
 print("last_sha →", rev[:12])
 PY

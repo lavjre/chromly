@@ -43,8 +43,9 @@ section "alert engine — watcher_lag"
 from chromly.intel import watcher
 
 st = watcher._load_state()
-st["_saved_lag"] = st.get("last_lag_hours")
-st["last_lag_hours"] = 99.0
+sec = st.setdefault("v8", {})
+sec["_saved_lag"] = sec.get("last_lag_hours")
+sec["last_lag_hours"] = 99.0
 watcher._save_state(st)
 PY
 OUT="$("$VENV_BIN/chromly" telemetry alerts | tee "$LOG_DIR/m3-alerts.log")"
@@ -55,10 +56,15 @@ grep -q "watcher_lag" <<<"$OUT" && pass "alert watcher_lag bắn" || fail "khôn
 from chromly.intel import watcher
 
 st = watcher._load_state()
-if st.pop("_saved_lag", None) is not None:
-    st["last_lag_hours"] = st.pop("_saved_lag", None)
-elif st.get("last_lag_hours") == 99.0:
-    st["last_lag_hours"] = None
+sec = st.get("v8", {})
+if sec.get("last_lag_hours") == 99.0:
+    if sec.get("_saved_lag") is not None:
+        sec["last_lag_hours"] = sec.pop("_saved_lag")
+    else:
+        sec.pop("_saved_lag", None)
+        sec["last_lag_hours"] = None
+else:
+    sec.pop("_saved_lag", None)
 watcher._save_state(st)
 PY
 AID="$(grep -oE '^\[[0-9]+\] \[[a-z]+\] watcher_lag' <<<"$OUT" | grep -oE '[0-9]+' | head -1)"

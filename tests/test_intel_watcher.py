@@ -1,3 +1,4 @@
+import json
 import subprocess
 from pathlib import Path
 
@@ -63,3 +64,17 @@ def test_poll_local(monkeypatch, tmp_path: Path) -> None:
     n = con.execute("SELECT COUNT(*) AS n FROM intel").fetchone()["n"]
     assert n == res["new"]
     con.close()
+
+
+def test_load_state_migrate_merge(monkeypatch, tmp_path: Path) -> None:
+    """Migration top-level → v8 phải MERGE, không ghi đè section v8 sẵn có (F1/F2 review v3)."""
+    from chromly import paths
+
+    monkeypatch.setattr(paths, "STORE_DIR", tmp_path / "store")
+    sp = tmp_path / "store" / "intel" / "state.json"
+    sp.parent.mkdir(parents=True)
+    sp.write_text(json.dumps({"last_sha": "abc", "v8": {"last_poll": 123.0}}))
+    st = watcher._load_state()
+    assert st["v8"]["last_sha"] == "abc"  # key migrate được giữ
+    assert st["v8"]["last_poll"] == 123.0  # section v8 cũ không bị đè mất
+    assert "last_sha" not in st  # top-level đã dọn
