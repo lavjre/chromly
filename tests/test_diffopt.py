@@ -146,3 +146,25 @@ def test_normalize_error_blocks() -> None:
     assert diffopt._normalize(a) == diffopt._normalize(b)
     c = a.replace("RangeError: Maximum call stack size exceeded", "TypeError: x is not a function")
     assert diffopt._normalize(a) != diffopt._normalize(c)
+
+
+def test_normalize_dedupes_repeated_blocks() -> None:
+    a = "TypeError: x\n\nTypeError: x\n\nTypeError: x\n"
+    b = "TypeError: x\n"
+    assert diffopt._normalize(a) == diffopt._normalize(b)
+
+
+def test_diffopt_flaky_output_filtered(monkeypatch, tmp_path: Path) -> None:
+    """Bên nào output đổi giữa các lần chạy → không bao giờ báo (lọc async race)."""
+    _fake_corpus(monkeypatch, tmp_path, n=1)
+    _fake_d8(
+        tmp_path,
+        "#!/bin/bash\n"
+        'CNT="$0.cnt"\n'
+        'n=$(cat "$CNT" 2>/dev/null || echo 0)\n'
+        'echo $((n+1)) > "$CNT"\n'
+        'if [ $((n % 2)) -eq 0 ]; then echo "OUT-A"; else echo "OUT-B"; fi\n'
+        "exit 0\n",
+    )
+    s = diffopt.run_diffopt(limit=1, axes=[("no-opt", ["--no-opt"])])
+    assert s["diffs"] == 0

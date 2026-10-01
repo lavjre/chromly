@@ -108,7 +108,8 @@ def _normalize(out: str) -> str:
     - block uncaught-error: vị trí `file:line[:col]`, dòng snippet + caret, các frame
       `at ...` — stack-overflow/attribution khác nhau theo tier JIT (sparkplug/maglev…)
       nhưng cùng một lỗi (FP lớp thật gặp 2026-10-02, program f6 đệ quy: A báo ở
-      unnamed:3:20, B báo ở unnamed:4:13 — cùng RangeError).
+      unnamed:3:20, B báo ở unnamed:4:13 — cùng RangeError);
+    - block trùng lặp (worker cùng lỗi in N lần tuỳ scheduling — FP lớp #5).
     """
     out = _ADDR_RE.sub("0xADDR", out)
     keep: list[str] = []
@@ -120,7 +121,21 @@ def _normalize(out: str) -> str:
         if _FRAME_RE.match(line):
             continue
         keep.append(_ERR_HEAD_RE.sub(r"\1:N: \3: ", line))
-    return "\n".join(keep)
+    return _dedupe_blocks("\n".join(keep))
+
+
+def _dedupe_blocks(out: str) -> str:
+    """Gộp các block giống hệt nhau (cách nhau dòng trống) — worker in lỗi N lần
+    là racing, không phải khác biệt hành vi."""
+    blocks = re.split(r"\n{2,}", out)
+    seen: set[str] = set()
+    kept: list[str] = []
+    for b in blocks:
+        if b in seen:
+            continue
+        seen.add(b)
+        kept.append(b)
+    return "\n\n".join(kept)
 
 
 def run_once(d8: Path, program: Path, flags: list[str], timeout: int = 20) -> dict:
@@ -146,6 +161,10 @@ def compare(a1: dict, a2: dict, b1: dict, b2: dict) -> bool:
     if not (stable_a and stable_b):
         return False
     return (a1["rc"] != b1["rc"]) or (a1["out"] != b1["out"])
+
+
+def _sig(res: dict) -> tuple:
+    return (res["rc"], res["out"])
 
 
 def _comparable(res: dict) -> bool:
@@ -283,23 +302,22 @@ def run_diffopt(
             continue
         if not (_comparable(a1) and _comparable(b1)):
             continue
-        a2 = run_once(d8, prog, [], timeout)
-        b2 = run_once(d8, prog, axis_flags, timeout)
-        if not compare(a1, a2, b1, b2):
+        # confirm: mỗi bên phải ỔN ĐỊNH qua 6 lần chạy (lọc async/worker race —
+        # worker in lỗi N lần tuỳ scheduling; 3 lần chưa đủ, gặp 2026-10-02)
+        runs_a = [a1] + [run_once(d8, prog, [], timeout) for _ in range(5)]
+        if len({_sig(r) for r in runs_a}) != 1:
             continue
-        # confirm lần 3: lọc race hiếm (vd Worker flush error bất định — gặp 2026-10-01)
-        a3 = run_once(d8, prog, [], timeout)
-        b3 = run_once(d8, prog, axis_flags, timeout)
-        if (a1["rc"], a1["out"]) != (a3["rc"], a3["out"]):
+        runs_b = [b1] + [run_once(d8, prog, axis_flags, timeout) for _ in range(5)]
+        if len({_sig(r) for r in runs_b}) != 1:
             continue
-        if (b1["rc"], b1["out"]) != (b3["rc"], b3["out"]):
+        if _sig(runs_a[0]) == _sig(runs_b[0]):
             continue
         key = f"{hashlib.sha256(prog.read_bytes()).hexdigest()[:24]}:{axis_name}"
         if key in found:
             continue
         diffs += 1
         art = out_base / f"{i:05d}_{prog.stem[:48]}"
-        _save_diff(art, prog, axis_name, a1, a2, b1, b2)
+        _save_diff(art, prog, axis_name, runs_a[0], runs_a[1], runs_b[0], runs_b[1])
         h = _file_finding(
             prog,
             "miscompile-diff",
