@@ -1,6 +1,6 @@
 # ADR-010 — libFuzzer engine mode: chấp nhận replay v0, engine để v2
 
-**Trạng thái:** Accepted · **Ngày:** 2026-09-30 · **Milestone:** M1 (M1-03/M1-08) · **Supersedes:** —
+**Trạng thái:** Superseded by [ADR-011](0011-libfuzzer-engine-relink.md) (2026-10-01 — engine mode hoàn thành qua re-link ninja, không cần shim) · **Ngày:** 2026-09-30 · **Milestone:** M1 (M1-03/M1-08)
 
 ## Bối cảnh
 

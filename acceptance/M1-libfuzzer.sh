@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# acceptance/M1-libfuzzer.sh — M1-03: build out/libfuzzer + 2 wrapper v0 (replay)
+# acceptance/M1-libfuzzer.sh — M1-03: build out/libfuzzer + replay lane (fallback v0)
+#   Engine thật (mutation/coverage) = M1-engine.sh (M1-08). Đây là lane replay
+#   toàn corpus — chạy 1 lượt mỗi unit, không đụng farm (không up/down).
 source "$(cd "$(dirname "$0")" && pwd)/lib.sh"
 
 OUT="${CHROMLY_V8_ROOT:-$HOME/v8/v8}/out/libfuzzer"
@@ -16,23 +18,17 @@ for f in v8_simple_parser_fuzzer v8_simple_wasm_module_fuzzer; do
     [[ -x "$OUT/$f" ]] && pass "$f" || fail "thiếu $OUT/$f"
 done
 
-section "2 wrapper v0 chạy 120s"
-"$VENV_BIN/chromly" fuzz up
-sleep 120
-ST="$("$VENV_BIN/chromly" fuzz status)"
-echo "$ST"
-lib_alive="$(grep -cE "libfuzzer-(parser|wasm) +alive" <<<"$ST" || true)"
-[[ "$lib_alive" -eq 2 ]] && pass "2 wrapper alive" || fail "chỉ $lib_alive/2 alive"
-
-pfiles="$(grep -oE "files=[0-9]+" "$REPO_ROOT/store/fuzz/logs/libfuzzer-parser.log" 2>/dev/null | tail -1)"
-note "parser replay: $pfiles"
-if [[ "$pfiles" =~ files=([1-9][0-9]*) ]]; then
-    pass "parser replay chạy thật (${BASH_REMATCH[1]} file)"
-else
-    fail "parser replay chưa chạy file nào"
-fi
-
-"$VENV_BIN/chromly" fuzz down >/dev/null
-pass "down sau test"
+section "replay fallback — 1 lượt mỗi unit"
+for u in libfuzzer-parser libfuzzer-wasm; do
+    L="$LOG_DIR/m1-libfuzzer-$u.log"
+    timeout 900 "$VENV_BIN/chromly" fuzz lfreplay --unit "$u" --once >"$L" 2>&1
+    files="$(grep -oE "files=[0-9]+" "$L" | tail -1)"
+    if [[ "$files" =~ files=([1-9][0-9]*) ]]; then
+        pass "$u replay thật (${files})"
+    else
+        fail "$u replay không chạy file nào — tail $L"
+        tail -3 "$L" | sed 's/^/      /'
+    fi
+done
 
 ac_summary

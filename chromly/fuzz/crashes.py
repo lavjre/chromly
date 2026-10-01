@@ -32,6 +32,8 @@ def _sources() -> dict[str, Path]:
         "fuzzilli": base / "fuzzilli" / "crashes",
         "libfuzzer-parser": base / "libfuzzer-parser" / "artifacts",
         "libfuzzer-wasm": base / "libfuzzer-wasm" / "artifacts",
+        "lfuzz-parser": base / "lfuzz-parser" / "artifacts",
+        "lfuzz-wasm": base / "lfuzz-wasm" / "artifacts",
     }
     return {name: d for name, d in candidates.items() if d.is_dir()}
 

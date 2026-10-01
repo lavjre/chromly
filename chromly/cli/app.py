@@ -78,6 +78,19 @@ def main(argv: list[str] | None = None) -> int:
     p_lf.add_argument("--unit", required=True, choices=["libfuzzer-parser", "libfuzzer-wasm"])
     p_lf.add_argument("--interval", type=float, default=60.0)
     p_lf.add_argument("--once", action="store_true")
+    p_eng = fuzz_sub.add_parser("engine", help="build libFuzzer engine cho V8 fuzzers (M1-08)")
+    p_eng.add_argument("--build", action="store_true", help="build archive + binary engine")
+    p_eng.add_argument(
+        "--fuzzer",
+        action="append",
+        choices=["parser", "wasm_module"],
+        help="chỉ build fuzzer này (mặc định: tất cả)",
+    )
+    p_lz = fuzz_sub.add_parser("lfuzz", help="engine loop: mutation + coverage (M1-08)")
+    p_lz.add_argument("--unit", required=True, choices=["lfuzz-parser", "lfuzz-wasm"])
+    p_lz.add_argument("--seconds", type=int, default=600, help="thời gian mỗi cycle")
+    p_lz.add_argument("--interval", type=float, default=2.0, help="giây nghỉ giữa cycle")
+    p_lz.add_argument("--once", action="store_true")
 
     p_intel = sub.add_parser("intel", help="intel track — watcher (§5.3, M2)")
     intel_sub = p_intel.add_subparsers(dest="intel_cmd")

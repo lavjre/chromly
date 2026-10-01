@@ -1,8 +1,10 @@
 """Fuzz farm — quản worker theo unit (§5.2).
 
-M1: unit `fuzzilli` (--jobs=4 thread workers, corpus sync full) + (M1-03) unit libFuzzer ×2.
+M1: unit `fuzzilli` (--jobs=4 thread workers, corpus sync full) + unit libFuzzer
+engine ×2 (M1-08: mutation thật, coverage-guided, artifact → artifacts/).
+Replay wrapper (M1-03 v0) vẫn dùng được qua `chromly fuzz lfreplay` — không thuộc default.
 Chạy nice 5, kill theo process group, state ở store/fuzz/state.json.
-Format log fuzzilli (`Execs/second`) verify ở smoke M1-01 — parser tolerant.
+Format log fuzzilli (`Execs/second`) + libFuzzer (`exec/s:`) — parser tolerant.
 """
 
 from __future__ import annotations
@@ -94,8 +96,11 @@ def quarantine_fuzzilli_corpus() -> str | None:
 
 
 def libfuzzer_units() -> list[Unit]:
-    """2 unit libFuzzer (parser · wasm) — v0 replay wrapper (V8 standalone thiếu engine).
-    Xem chromly/fuzz/replay.py + task M1-08 (engine thật)."""
+    """Replay units (M1-03 v0) — chỉ dùng thủ công/acceptance, không thuộc default.
+
+    Engine thật (mutation) nằm ở engine_units(); replay giữ lại để regression
+    chạy toàn corpus + cứu hộ khi engine binary thiếu. Xem task M1-08.
+    """
     units = []
     for name, binname in LIBFUZZER_TARGETS.items():
         if not (paths.V8_ROOT / "out" / "libfuzzer" / binname).is_file():
@@ -108,8 +113,24 @@ def libfuzzer_units() -> list[Unit]:
     return units
 
 
+def engine_units() -> list[Unit]:
+    """2 unit libFuzzer engine (M1-08): mutation + coverage thật, artifact tự cứu."""
+    from chromly.fuzz.engine import LFUZZ_UNITS, engine_bin
+
+    units = []
+    for name, fuzzer in LFUZZ_UNITS.items():
+        if not engine_bin(fuzzer).is_file():
+            continue
+        base = FUZZ_DIR / name
+        (base / "corpus").mkdir(parents=True, exist_ok=True)
+        (base / "artifacts").mkdir(parents=True, exist_ok=True)
+        cmd = [sys.executable, "-m", "chromly.cli.app", "fuzz", "lfuzz", "--unit", name]
+        units.append(Unit(name, "libfuzzer", cmd, LOGS_DIR / f"{name}.log"))
+    return units
+
+
 def default_units() -> list[Unit]:
-    return [fuzzilli_unit(), *libfuzzer_units()]
+    return [fuzzilli_unit(), *engine_units()]
 
 
 def _v8_rev() -> str:
@@ -218,6 +239,13 @@ def up(units: list[Unit] | None = None) -> dict:
             env=_env(),
             cwd=str(paths.REPO_ROOT),
         )
+        # chờ exec xong: watchdog/status gọi ngay sau up() có thể đọc /proc trước
+        # khi cmdline được thay (cửa sổ fork→exec) → tưởng process chết.
+        probe = {"pid": proc.pid, "cmd": unit.cmd}
+        for _ in range(20):
+            if proc.poll() is not None or _alive(probe):
+                break
+            time.sleep(0.1)
         state["units"][unit.name] = {
             "pid": proc.pid,
             "started": time.time(),
@@ -338,10 +366,15 @@ def run_fuzz_cmd(args) -> int:
         return run_diffopt_cmd(args)
     if cmd == "seed":
         from chromly.fuzz import replay
+        from chromly.fuzz import engine as engine_mod
 
         total = 0
         for unit in LIBFUZZER_TARGETS:
             n = replay.seed_corpus(unit)
+            print(f"{unit}: +{n} seed")
+            total += n
+        for unit in engine_mod.LFUZZ_UNITS:
+            n = engine_mod.seed_corpus(unit)
             print(f"{unit}: +{n} seed")
             total += n
         print(f"seed: +{total} (tổng)")
@@ -365,6 +398,14 @@ def run_fuzz_cmd(args) -> int:
             return 0
         print("usage: chromly fuzz corpus {sync|import|trim}")
         return 2
+    if cmd == "engine":
+        from chromly.fuzz.engine import run_engine_cmd
+
+        return run_engine_cmd(args)
+    if cmd == "lfuzz":
+        from chromly.fuzz.engine import run_lfuzz_cmd
+
+        return run_lfuzz_cmd(args)
     if cmd == "lfreplay":
         from chromly.fuzz.replay import run_lfreplay
 
@@ -373,5 +414,8 @@ def run_fuzz_cmd(args) -> int:
             interval=getattr(args, "interval", 60.0),
             once=getattr(args, "once", False),
         )
-    print("usage: chromly fuzz {up|down|status|watchdog|ingest|metrics|corpus|lfreplay}")
+    print(
+        "usage: chromly fuzz {up|down|status|watchdog|ingest|metrics|corpus|seed|"
+        "diffopt|engine|lfuzz|lfreplay}"
+    )
     return 2

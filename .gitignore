@@ -15,4 +15,5 @@ venv/
 .pytest_cache/
 *.egg-info/
 build/ida-db/
+build/libfuzzer/
 tests/INTEL-*/

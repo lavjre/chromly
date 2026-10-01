@@ -1,7 +1,8 @@
-# M1-08 — libFuzzer engine mode (follow-up, cần ADR)
+# M1-08 — libFuzzer engine mode (DONE — ADR-011)
 
-**Status:** todo — **defer v2 per ADR-010** (hướng: shim `testing/libfuzzer/BUILD.gn`, không patch nguồn V8)
-**Deliverable:** link được engine libFuzzer (`LLVMFuzzerRunDriver`) cho `v8_simple_*_fuzzer` trên standalone V8 — hiện thiếu `//testing/libfuzzer` (chromium) nên binary chỉ là one-shot runner (xem M1-03 v0). Hướng: (a) build với `$LIB_FUZZING_ENGINE` kiểu oss-fuzz (clang `-fsanitize=fuzzer` ở link + loại main của fuzzer.cc), hoặc (b) thêm target no-main. Kèm: đổi `chromly fuzz lfreplay` sang engine mode (`-max_len`, `-rss_limit_mb`, artifact prefix thật).
-**Files:** `infra/` (script build) hoặc `chromly/builds/` + ADR mới.
-**Acceptance:** engine chạy mutation thật (`-runs=1000`, corpus tăng coverage); wrapper `libfuzzer-parser` dùng engine.
-**Phụ thuộc:** ADR (G4) — dependency/wiring mới.
+**Status:** done (2026-10-01) — thay ADR-010 (defer v2) bằng ADR-011: re-link từ ninja per-target + vendor source, **không patch nguồn V8**.
+**Deliverable:** `chromly fuzz engine --build` → archive `build/libfuzzer/libFuzzer.a` (vendor llvmorg-21.1.0, compile bằng clang-24 + libc++ + sysroot bullseye) + binary `out/libfuzzer/v8_engine_{parser,wasm_module}_fuzzer` (re-link toàn bộ objects từ `out/libfuzzer/obj/v8_simple_<f>_fuzzer.ninja`, bỏ main one-shot, thêm runtime libFuzzer). Wrapper `chromly fuzz lfuzz --unit lfuzz-{parser,wasm}` — loop cycle `-max_total_time=600`, artifact → `store/fuzz/<unit>/artifacts/`. Farm mặc định chuyển sang engine units; replay (`chromly fuzz lfreplay`) = fallback lane.
+**Files:** `chromly/fuzz/engine.py` · `third_party/libfuzzer/` (vendored, LICENSE.TXT kèm) · `chromly/fuzz/farm.py` · `chromly/fuzz/crashes.py` · `chromly/cli/app.py` · `acceptance/M1-engine.sh` · `tests/test_engine.py` · `docs/adr/0011-libfuzzer-engine-relink.md`
+**Acceptance:** `bash acceptance/M1-engine.sh` → build OK, 2 engine binary, smoke "Done"+"cov:"+"exec/s:", 2 unit lfuzz alive; `bash acceptance/M1-libfuzzer.sh` (replay fallback) vẫn xanh.
+**Evidence:** engine parser ~300–330 exec/s, wasm ~750–840 exec/s (2026-10-01); artifact cơ chế verify: OOM test → `oom-490622af…` ghi đúng `-artifact_prefix` (rc=71); crash thật rc=77 cùng đường.
+**Phụ thuộc:** — (đã xong).
