@@ -10,7 +10,7 @@ from pathlib import Path
 
 ARGS_DIR = Path(__file__).parent / "args"
 DEFAULT_TARGET = "d8"
-CONFIG_NAMES = ("release", "dcheck", "asan", "fuzzilli", "libfuzzer", "calib")
+CONFIG_NAMES = ("release", "dcheck", "asan", "fuzzilli", "libfuzzer", "calib", "tot")
 
 
 @dataclass(frozen=True)

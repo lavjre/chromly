@@ -1,0 +1,12 @@
+# chromly build config — ToT verify (M5-gap): asan + dcheck + verify_heap.
+# Dùng để xác nhận bug tìm trên snapshot còn sống (unfixed) tại upstream mới nhất.
+# Build từ rev ToT (mirror FETCH_HEAD) — xem `chromly tot build`.
+# target: d8
+is_debug = false
+symbol_level = 2
+use_lld = true
+v8_monolithic = true
+v8_use_external_startup_data = false
+is_asan = true
+v8_enable_verify_heap = true
+dcheck_always_on = true

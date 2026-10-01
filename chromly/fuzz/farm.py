@@ -31,7 +31,7 @@ FUZZ_DIR = paths.STORE_DIR / "fuzz"
 STATE_PATH = FUZZ_DIR / "state.json"
 LOGS_DIR = FUZZ_DIR / "logs"
 
-JOBS = 4
+JOBS = int(os.environ.get("CHROMLY_FUZZILLI_JOBS", "6"))
 NICE = 5
 
 _EXECS_RE = re.compile(r"(?:Execs\s*/\s*Second:|exec/s:)\s*([\d.]+)")

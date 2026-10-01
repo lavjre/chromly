@@ -68,12 +68,15 @@ def main(argv: list[str] | None = None) -> int:
     p_ctrim.add_argument("--days", type=int, default=30)
     p_ctrim.add_argument("--apply", action="store_true", help="xoá thật")
     fuzz_sub.add_parser("seed", help="top-up corpus từ test delta (M2-08)")
-    p_do = fuzz_sub.add_parser("diffopt", help="differential opt/no-opt (M2-10)")
-    p_do.add_argument("--limit", type=int, default=100)
+    p_do = fuzz_sub.add_parser(
+        "diffopt", help="differential lane JIT: opt vs no-opt/jitless/maglev (M2-10)"
+    )
+    p_do.add_argument("--limit", type=int, default=0, help="0 = không giới hạn (theo --seconds)")
+    p_do.add_argument("--seconds", type=float, default=900.0, help="budget thời gian mỗi cycle")
     p_do.add_argument("--build", default="release", choices=["release", "asan", "calib"])
     p_do.add_argument("--timeout", type=int, default=20)
     p_do.add_argument("--loop", action="store_true", help="chạy mãi (aux supervisor)")
-    p_do.add_argument("--interval", type=float, default=86400.0, help="giây giữa các lượt")
+    p_do.add_argument("--interval", type=float, default=120.0, help="giây giữa các cycle (loop)")
     p_lf = fuzz_sub.add_parser("lfreplay", help="replay loop cho V8 simple-fuzzer (M1-03 v0)")
     p_lf.add_argument("--unit", required=True, choices=["libfuzzer-parser", "libfuzzer-wasm"])
     p_lf.add_argument("--interval", type=float, default=60.0)
