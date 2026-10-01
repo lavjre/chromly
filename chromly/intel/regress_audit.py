@@ -18,6 +18,7 @@ import json
 import re
 import subprocess
 import time
+from datetime import datetime
 from pathlib import Path
 
 from chromly import paths
@@ -212,16 +213,25 @@ def audit(max_tests: int = 40, dry_run: bool = False) -> dict:
 
 
 def run_audit_cmd(args) -> int:
-    try:
-        s = audit(max_tests=getattr(args, "max", 40), dry_run=getattr(args, "dry_run", False))
-    except (FileNotFoundError, RuntimeError) as e:
-        print(f"audit: {e}")
-        return 1
-    print(
-        f"audit: scanned={s['scanned']} crashes={s['crashes']} "
-        f"(rev {s['rev'][:12]} → mirror origin/main)"
-    )
-    for r in s["results"]:
-        if r["outcome"] == "crash":
-            print(f"  CRASH  {r['test']} → {r.get('crash_hash', '?')}")
-    return 0 if s["crashes"] >= 0 else 1
+    def once() -> int:
+        try:
+            s = audit(max_tests=getattr(args, "max", 40), dry_run=getattr(args, "dry_run", False))
+        except (FileNotFoundError, RuntimeError) as e:
+            print(f"audit: {e}", flush=True)
+            return 1
+        print(
+            f"[{datetime.now():%H:%M:%S}] audit: scanned={s['scanned']} crashes={s['crashes']} "
+            f"(rev {s['rev'][:12]} → mirror origin/main)",
+            flush=True,
+        )
+        for r in s["results"]:
+            if r["outcome"] == "crash":
+                print(f"  CRASH  {r['test']} → {r.get('crash_hash', '?')}", flush=True)
+        return 0
+
+    if getattr(args, "loop", False):
+        interval = getattr(args, "interval", 86400.0)
+        while True:
+            once()
+            time.sleep(interval)
+    return once()

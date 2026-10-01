@@ -75,6 +75,8 @@ def main(argv: list[str] | None = None) -> int:
     p_aud = intel_sub.add_parser("audit", help="upstream-regress delta audit (M2-06)")
     p_aud.add_argument("--max", type=int, default=40, help="số test tối đa")
     p_aud.add_argument("--dry-run", action="store_true", help="chỉ liệt kê, không chạy")
+    p_aud.add_argument("--loop", action="store_true", help="chạy mãi (aux supervisor)")
+    p_aud.add_argument("--interval", type=float, default=86400.0, help="giây giữa các lượt")
     intel_sub.add_parser("status", help="trạng thái intel (M2-05)")
 
     p_recon = sub.add_parser("recon", help="recon & surface — archaeology/report (§2, M4-08)")
