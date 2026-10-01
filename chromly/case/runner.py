@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import fcntl
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -25,6 +27,8 @@ MAX_RESUME = 8
 MAX_WALL_DEFAULT = 6 * 3600.0  # plan §10.2: case process >6h coi là leak
 HIGH_SCORE_MIN = 5  # thang severity thực: variant=5, validate bump=7
 VERDICT_RE = re.compile(r"verdict:\s*(validated-crash|no-bug|needs-human|report-draft)")
+RUNNER_FILE = "runner.json"  # {pid, started} — phát hiện runner chết giữa case
+RUNNER_STALE_S = 600.0  # không có runner.json + meta cũ hơn ngưỡng → reclaim
 
 
 def scratch_for(case_id: str) -> Path:
@@ -80,6 +84,7 @@ def run_case(
     max_wall: float = MAX_WALL_DEFAULT,
     model: str | None = None,
     resume_session: str | None = None,
+    count_resume: bool = False,
 ) -> dict:
     from chromly.case.pipeline import set_state
 
@@ -96,19 +101,105 @@ def run_case(
     if not opencode:
         return {"case": case_id, "status": "no-opencode"}  # chưa RUNNING — không kẹt
 
-    if resume_session:
+    if resume_session or count_resume:
         meta = pipeline.load_case(case_id)
         if int(meta.get("resumes", 0)) >= MAX_RESUME:
             return {"case": case_id, "status": "resume-cap", "resumes": meta.get("resumes", 0)}
 
     s = _prepare_scratch(case_id)
     set_state(case_id, "RUNNING")
+    # dấu runner sống — reclaim nhanh nếu process này chết giữa case (xem stale_running_case)
+    rf = pipeline.case_dir(case_id) / RUNNER_FILE
+    rf.write_text(json.dumps({"pid": os.getpid(), "started": time.time(), "case": case_id}))
     try:
-        return _run_case_inner(case_id, s, opencode, model, max_wall, resume_session)
+        return _run_case_inner(case_id, s, opencode, model, max_wall, resume_session, count_resume)
     except Exception as exc:  # noqa: BLE001 — không bao giờ để case kẹt RUNNING
         with contextlib.suppress(Exception):
             set_state(case_id, "ERROR")
         return {"case": case_id, "status": "error", "detail": f"{type(exc).__name__}: {exc}"}
+    finally:
+        with contextlib.suppress(OSError):
+            rf.unlink()
+
+
+def _runner_alive(pid: int) -> bool:
+    """pid còn sống VÀ vẫn thuộc chromly (chống pid reuse)."""
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:
+        cmdline = (
+            Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+        )
+    except OSError:
+        return False
+    return "chromly" in cmdline
+
+
+def stale_running_case(now: float | None = None) -> str | None:
+    """Case RUNNING nhưng runner không còn sống → trả id để reclaim (TIMEOUT rồi resume).
+
+    Vì sao cần: 2026-10-01 CASE-0004 — aux loop `case auto` chết giữa case, state kẹt
+    RUNNING; `_case_running()` chặn mọi auto-case mới tới tận hạn reap 6.5h của watchdog.
+    """
+    now = now if now is not None else time.time()
+    con = db.ensure_db()
+    try:
+        rows = con.execute("SELECT id FROM cases WHERE state = 'RUNNING'").fetchall()
+    finally:
+        con.close()
+    for r in rows:
+        cid = r["id"]
+        try:
+            d = pipeline.case_dir(cid)
+            rf = d / RUNNER_FILE
+            if rf.is_file():
+                try:
+                    rec = json.loads(rf.read_text())
+                except json.JSONDecodeError:
+                    rec = {}
+                if _runner_alive(int(rec.get("pid") or 0)):
+                    continue
+                return cid
+            # legacy (runner chưa kịp ghi file): chỉ reclaim khi meta đã cũ
+            mp = d / "meta.json"
+            if mp.is_file() and now - mp.stat().st_mtime > RUNNER_STALE_S:
+                return cid
+        except OSError:
+            continue
+    return None
+
+
+def reclaim_stale_running() -> str | None:
+    """Đánh TIMEOUT cho case RUNNING có runner đã chết (để vòng sau resume)."""
+    cid = stale_running_case()
+    if cid is None:
+        return None
+    pipeline.set_state(cid, "TIMEOUT")
+    with contextlib.suppress(Exception):
+        from chromly.fuzz import watchdog
+
+        watchdog.append_event("case-reclaim", cid, {"reason": "runner-dead"})
+    print(f"[auto] reclaim {cid}: runner chết → TIMEOUT (sẽ resume lượt sau)", flush=True)
+    return cid
+
+
+def _acquire_auto_lock():
+    """flock không-blocking — chặn 2 instance `case auto` chạy song song (nguồn kẹt case)."""
+    lock_path = paths.STORE_DIR / "fuzz" / "case-auto.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fh = lock_path.open("a")
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        return None
+    return fh
 
 
 def _case_high_score(case_id: str) -> bool:
@@ -139,6 +230,7 @@ def _run_case_inner(
     model: str,
     max_wall: float,
     resume_session: str | None,
+    count_resume: bool = False,
 ) -> dict:
     from chromly.case.pipeline import set_state
 
@@ -197,7 +289,7 @@ def _run_case_inner(
             break
 
     set_state(case_id, state, verdict=verdict, budget_used=wall)
-    if resume_session:
+    if resume_session or count_resume:
         meta = pipeline.load_case(case_id)
         meta["resumes"] = int(meta.get("resumes", 0)) + 1
         (pipeline.case_dir(case_id) / "meta.json").write_text(
@@ -289,8 +381,11 @@ def auto_case_tick(threshold: int = AUTO_THRESHOLD) -> str | None:
     return meta["id"]
 
 
-def pick_resume_case() -> tuple[str, str] | None:
-    """(case_id, session_id) cho case TIMEOUT còn lượt resume (< MAX_RESUME)."""
+def pick_resume_case() -> tuple[str, str | None] | None:
+    """(case_id, session_id|None) cho case TIMEOUT còn lượt resume (< MAX_RESUME).
+
+    session None = chưa có runs row (runner chết trước khi đăng ký) → resume mới hoàn toàn.
+    """
     con = db.ensure_db()
     try:
         rows = con.execute(
@@ -308,35 +403,45 @@ def pick_resume_case() -> tuple[str, str] | None:
                 "ORDER BY id DESC LIMIT 1",
                 (r["id"],),
             ).fetchone()
-            if sess:
-                return r["id"], sess["session_id"]
+            return r["id"], (sess["session_id"] if sess else None)
     finally:
         con.close()
     return None
 
 
 def auto_resume_tick() -> str | None:
-    """Case TIMEOUT còn lượt → chạy tiếp với session cũ (cap MAX_RESUME enforce trong run_case)."""
+    """Case TIMEOUT còn lượt → chạy tiếp (session cũ nếu có; cap MAX_RESUME trong run_case)."""
     if _case_running():
         return None
     pick = pick_resume_case()
     if pick is None:
         return None
     case_id, session = pick
-    print(f"[auto] resume {case_id} (session {session[:16]})", flush=True)
-    res = run_case(case_id, resume_session=session)
+    print(f"[auto] resume {case_id} (session {(session or 'new')[:16]})", flush=True)
+    res = run_case(case_id, resume_session=session, count_resume=True)
     print(f"[auto] {case_id} → {res.get('status')} verdict={res.get('verdict')}", flush=True)
     return case_id
 
 
 def run_case_auto(interval: float = 900.0) -> int:
-    """Aux loop: mỗi `interval` giây quét candidate mới và chạy case (1/lúc)."""
+    """Aux loop: reclaim case kẹt → quét candidate mới → resume (1/lúc, flock chống trùng)."""
+    lock = None
     while True:
+        if lock is None:
+            lock = _acquire_auto_lock()
+        if lock is None:
+            print(
+                f"[{time.strftime('%H:%M:%S')}] auto-case: instance khác giữ lock — idle",
+                flush=True,
+            )
+            time.sleep(interval)
+            continue
         try:
+            reclaimed = reclaim_stale_running()
             cid = auto_case_tick()
             if cid is None:
                 cid = auto_resume_tick()
-            if cid is None:
+            if cid is None and reclaimed is None:
                 print(f"[{time.strftime('%H:%M:%S')}] auto-case: 0 candidate", flush=True)
         except Exception as exc:  # noqa: BLE001 — loop dài hạn
             print(

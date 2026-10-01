@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 from chromly import paths
@@ -296,3 +297,77 @@ def test_pick_resume_case(monkeypatch, tmp_path: Path) -> None:
     m["resumes"] = runner.MAX_RESUME
     (pipeline.case_dir(cid) / "meta.json").write_text(json.dumps(m))
     assert runner.pick_resume_case() is None
+
+
+# ── reclaim case kẹt RUNNING (runner chết giữa case — bài học CASE-0004) ──
+
+
+def test_stale_running_case_dead_runner(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    meta = pipeline.new_case(None)
+    pipeline.set_state(meta["id"], "RUNNING")
+    (pipeline.case_dir(meta["id"]) / "runner.json").write_text(
+        json.dumps({"pid": 999999999, "started": 0})
+    )
+    assert runner.stale_running_case() == meta["id"]
+
+
+def test_stale_running_case_alive_runner_kept(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    meta = pipeline.new_case(None)
+    pipeline.set_state(meta["id"], "RUNNING")
+    (pipeline.case_dir(meta["id"]) / "runner.json").write_text(
+        json.dumps({"pid": os.getpid(), "started": 0})
+    )
+    monkeypatch.setattr(runner, "_runner_alive", lambda pid: True)
+    assert runner.stale_running_case() is None
+
+
+def test_stale_running_case_legacy_old_meta(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    meta = pipeline.new_case(None)
+    pipeline.set_state(meta["id"], "RUNNING")
+    mp = pipeline.case_dir(meta["id"]) / "meta.json"
+    old = 1_000_000.0
+    os.utime(mp, (old, old))
+    assert runner.stale_running_case(now=old + runner.RUNNER_STALE_S + 1) == meta["id"]
+
+
+def test_stale_running_case_legacy_fresh_kept(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    meta = pipeline.new_case(None)
+    pipeline.set_state(meta["id"], "RUNNING")
+    # không runner.json nhưng meta mới (case vừa start) → chưa được đụng
+    assert runner.stale_running_case() is None
+
+
+def test_reclaim_stale_running_sets_timeout(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    from chromly.fuzz import watchdog
+
+    monkeypatch.setattr(watchdog, "append_event", lambda *a, **k: None)
+    meta = pipeline.new_case(None)
+    pipeline.set_state(meta["id"], "RUNNING")
+    (pipeline.case_dir(meta["id"]) / "runner.json").write_text(json.dumps({"pid": 999999999}))
+    cid = runner.reclaim_stale_running()
+    assert cid == meta["id"]
+    assert pipeline.load_case(meta["id"])["state"] == "TIMEOUT"
+
+
+def test_pick_resume_case_no_session(monkeypatch, tmp_path: Path) -> None:
+    # runner chết trước khi có runs row → resume mới hoàn toàn (session None)
+    _setup(monkeypatch, tmp_path)
+    meta = pipeline.new_case(None)
+    pipeline.set_state(meta["id"], "TIMEOUT")
+    assert runner.pick_resume_case() == (meta["id"], None)
+
+
+def test_acquire_auto_lock_exclusive(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    lock1 = runner._acquire_auto_lock()
+    assert lock1 is not None
+    # instance thứ 2 (process khác) không lấy được; trong cùng process flock theo open-file
+    # description nên mở lại cũng fail
+    lock2 = runner._acquire_auto_lock()
+    assert lock2 is None
+    lock1.close()
