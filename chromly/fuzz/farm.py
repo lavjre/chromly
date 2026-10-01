@@ -365,8 +365,8 @@ def run_fuzz_cmd(args) -> int:
 
         return run_diffopt_cmd(args)
     if cmd == "seed":
-        from chromly.fuzz import replay
         from chromly.fuzz import engine as engine_mod
+        from chromly.fuzz import replay
 
         total = 0
         for unit in LIBFUZZER_TARGETS:
