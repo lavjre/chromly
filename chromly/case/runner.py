@@ -58,12 +58,23 @@ def _prepare_scratch(case_id: str) -> Path:
 
 def _mission(case_id: str) -> str:
     s = scratch_for(case_id)
+    tot_hint = ""
+    try:
+        from chromly.builds import tot as tot_mod
+
+        if tot_mod.d8_ready():
+            tot_hint = (
+                f"\nd8 ToT (upstream mới nhất, asan+dcheck): {tot_mod.d8_path()} — "
+                "dùng để xác nhận bug CÒN SỐNG trên ToT (unfixed) trước khi kết luận."
+            )
+    except Exception:  # noqa: BLE001 — hint phụ, không được làm hỏng case
+        pass
     return f"""\
 Bạn là case lead của chromly (persona Nini). Mission: case {case_id}.
 
 Workdir TUYỆT ĐỐI (đọc/ghi mọi thứ ở đây): {s}
 V8 source chỉ-đọc: {paths.V8_ROOT} — dùng đường dẫn tuyệt đối khi Grep/Read.
-d8: {paths.V8_ROOT}/out/asan/d8 (chính) · {paths.V8_ROOT}/out/calib/d8 (nếu có).
+d8: {paths.V8_ROOT}/out/asan/d8 (chính) · {paths.V8_ROOT}/out/calib/d8 (nếu có).{tot_hint}
 
 Đọc `{s}/brief.md` và làm theo đúng các bước trong đó. Tóm tắt:
 1. Repro ×5 trên asan d8, ghi tỉ lệ thật vào notes.md.

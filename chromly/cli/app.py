@@ -45,6 +45,15 @@ def main(argv: list[str] | None = None) -> int:
     p_build.add_argument("--fetch-only", action="store_true", help="chỉ gclient sync, không build")
     p_build.add_argument("--status", action="store_true", help="liệt kê build gần đây")
 
+    p_tot = sub.add_parser("tot", help="ToT: build mới nhất + verify unfixed (ADR-011 gap)")
+    tot_sub = p_tot.add_subparsers(dest="tot_cmd")
+    p_totb = tot_sub.add_parser("build", help="sync lên ToT → build out/tot → revert snapshot")
+    p_totb.add_argument("--sha", default=None, help="rev ToT (mặc định: mirror FETCH_HEAD)")
+    tot_sub.add_parser("status", help="trạng thái build ToT")
+    p_totv = tot_sub.add_parser("verify", help="chạy repro trên ToT d8")
+    p_totv.add_argument("target", help="file .js hoặc hash crash")
+    p_totv.add_argument("--flags", default=None, help="flags thêm cho d8 (chuỗi)")
+
     p_fuzz = sub.add_parser("fuzz", help="fuzz farm — worker up/down/status (§5.2)")
     fuzz_sub = p_fuzz.add_subparsers(dest="fuzz_cmd")
     fuzz_sub.add_parser("up", help="start workers")
@@ -318,6 +327,10 @@ def main(argv: list[str] | None = None) -> int:
         from chromly.orchestrator.report import run_report_cmd
 
         return run_report_cmd(args)
+    if args.cmd == "tot":
+        from chromly.builds.tot import run_tot_cmd
+
+        return run_tot_cmd(args)
     if args.cmd in ("up", "down"):
         from chromly.orchestrator.supervisor import run_supervisor_cmd
 
