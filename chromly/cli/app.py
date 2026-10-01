@@ -25,6 +25,19 @@ def main(argv: list[str] | None = None) -> int:
 
     p_doc = sub.add_parser("doctor", help="kiểm tra môi trường VM (§13 M0)")
     p_doc.add_argument("--json", action="store_true", help="output cho máy đọc")
+    p_info = sub.add_parser(
+        "info", help="snapshot 1 màn: farm·aux·intel·cases·crash·budget (M8-01)"
+    )
+    p_info.add_argument("--watch", "-w", action="store_true", help="redraw liên tục")
+    p_info.add_argument("--interval", type=float, default=5.0, help="giây giữa 2 lần redraw")
+    p_info.add_argument("--json", action="store_true", help="output JSON")
+    p_trace = sub.add_parser("trace", help="feed event hợp nhất (watchdog·plugin·case·DB) (M8-01)")
+    p_trace.add_argument("--follow", "-f", action="store_true", help="theo dõi trực tiếp")
+    p_trace.add_argument("--limit", type=int, default=40, help="số event in lúc đầu")
+    p_trace.add_argument("--since", type=float, default=60.0, help="lùi bao nhiêu phút")
+    p_trace.add_argument(
+        "--source", default=None, help="lọc source (phẩy): shell,deny,case,crash..."
+    )
 
     p_build = sub.add_parser("build", help="V8 build rig (§5.1)")
     p_build.add_argument("--config", choices=list(CONFIG_NAMES), default="release")
@@ -206,6 +219,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd is None:
         parser.print_help()
         return 0
+    if args.cmd == "info":
+        from chromly.telemetry.monitor import run_info
+
+        return run_info(watch=args.watch, interval=args.interval, as_json=args.json)
+    if args.cmd == "trace":
+        from chromly.telemetry.monitor import run_trace
+
+        srcs = set(args.source.split(",")) if args.source else None
+        return run_trace(follow=args.follow, limit=args.limit, since_min=args.since, sources=srcs)
     if args.cmd == "check":
         from chromly.check import run_check
 
