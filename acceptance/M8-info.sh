@@ -6,10 +6,11 @@ cd "$REPO_ROOT"
 section "chromly info"
 OUT="$("$VENV_BIN/chromly" info 2>&1 | tee "$LOG_DIR/m8-info.log")"
 echo "$OUT" | head -14
+missing=""
 for sec in "══ chromly info" "FARM" "AUX" "INTEL" "CASES" "CRASH" "BUILD" "BUDGET"; do
-    grep -q "$sec" <<<"$OUT" && : || fail "thiếu section «$sec»"
+    grep -q "$sec" <<<"$OUT" || missing="$missing «$sec»"
 done
-[[ $? -eq 0 ]] && pass "info đủ section"
+[[ -z "$missing" ]] && pass "info đủ section" || fail "thiếu section:$missing"
 grep -q "event gần nhất" <<<"$OUT" && pass "có feed event" || fail "thiếu feed event"
 
 section "info --json"

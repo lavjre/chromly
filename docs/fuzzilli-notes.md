@@ -27,6 +27,6 @@ export PATH="$HOME/.local/share/swiftly/bin:$PATH"
 ## Ghi chú thiết kế
 
 - `--jobs=4` = 1 main + 3 thread workers **trong 1 process** (ThreadSync, corpus sync full) — phù hợp 8 vCPU; watchdog restart theo process (M1-04).
-- Crash rơi vào `storagePath/crashes/*.fzil` (kèm .js/.fuzzil.history khi bật `--inspect`) — crash store (M1-05) quét định kỳ.
+- Crash rơi vào `storagePath/crashes/`: mỗi crash = **cặp `.js` (lift JS, ghi TRƯỚC) + `.fzil` (protobuf, ghi SAU)** — nguồn: `Storage.swift::storeProgram` (không phụ thuộc cờ); crash store (M1-05) nhập `.fzil` canonical + `.js` sidecar, và nhập `.js` mồ côi nếu fuzzilli thoát giữa chừng (chỉ có .js).
 - `--exportStatistics` ghi stats định kỳ vào storage — nguồn metrics v0 (M1-07).
 - Multi-machine (sau này): instance tree `root`/`leaf` + `--bindTo`/`--connectTo` (`--corpusSyncMode`).
