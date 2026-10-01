@@ -7,6 +7,7 @@ notes.md, poc/, lanes/, VERDICT.md, log.jsonl, meta.json} (gitignored — runtim
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import time
 from pathlib import Path
@@ -26,9 +27,13 @@ def case_dir(case_id: str) -> Path:
 
 
 def _next_id() -> str:
+    """max(suffix) + 1 — không trùng khi có gap (xoá case giữa dãy)."""
     n = 0
     if cases_dir().is_dir():
-        n = len([d for d in cases_dir().iterdir() if d.is_dir() and d.name.startswith("CASE-")])
+        for d in cases_dir().iterdir():
+            m = re.match(r"CASE-(\d+)$", d.name)
+            if m and d.is_dir():
+                n = max(n, int(m.group(1)))
     return f"CASE-{n + 1:04d}"
 
 

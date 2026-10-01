@@ -23,6 +23,7 @@ CRASH_LOOP_WINDOW = 600.0
 DEGRADED_COOLDOWN = 1800.0
 FRESH_LOG_S = 120.0
 FRESH_STATS_S = 180.0
+CASE_STALE_S = 6 * 3600.0 + 600.0  # case RUNNING quá hạn (plan §10.2) → reap
 
 
 def _fresh_activity(rec: dict, now: float, window: float) -> bool:
@@ -138,7 +139,7 @@ def _restart(state: dict, name: str, rec: dict, reason: str, now: float) -> dict
         return {"unit": name, "action": "degraded", "reason": reason}
 
     unit = None
-    if rec["type"] == "fuzzilli" and (
+    if rec.get("type") == "fuzzilli" and (
         reason == "cooldown-recovery" or _log_has(rec, "Corpus import aborted")
     ):
         # corpus hỏng làm import abort (signal 6) — cách ly để start sạch, giữ crashes/stats
@@ -151,10 +152,19 @@ def _restart(state: dict, name: str, rec: dict, reason: str, now: float) -> dict
                 unit = u
                 break
     if unit is None:
-        unit = farm.Unit(name, rec["type"], rec["cmd"], Path(rec["log"]))
+        if not rec.get("type") or not rec.get("cmd"):
+            # record rỗng/hỏng (vd farm.up fail lúc restart) — bỏ qua record, không chết
+            append_event("unit-broken", name, {"reason": reason})
+            return {"unit": name, "action": "skip", "reason": f"{reason}: record thiếu type/cmd"}
+        unit = farm.Unit(name, rec["type"], rec["cmd"], Path(rec.get("log", "")))
     farm.up([unit])
     state2 = farm._load_state()
-    rec2 = state2["units"].get(name, {})
+    rec2 = state2["units"].get(name)
+    if not rec2 or "type" not in rec2:
+        # farm.up không đăng ký được unit (missing-binary...) — không ghi record rỗng
+        # (record rỗng làm tick sau KeyError chết watchdog)
+        append_event("restart-failed", name, {"reason": reason})
+        return {"unit": name, "action": "restart-failed", "reason": reason}
     rec2["restarts"] = hist
     rec2["degraded"] = False
     state2["units"][name] = rec2
@@ -173,9 +183,41 @@ def _aux_check(state: dict) -> list[dict]:
         if name == "watchdog":
             continue
         if not farm._alive(rec):
-            aux[name] = supervisor._spawn_aux(name, rec)
+            aux[name] = supervisor._spawn_aux(name)
             append_event("aux-restart", name, {"pid": aux[name]["pid"]})
             actions.append({"unit": f"aux:{name}", "action": "restarted", "reason": "dead"})
+    return actions
+
+
+def _case_stale_check(now: float) -> list[dict]:
+    """Case RUNNING quá CASE_STALE_S không chuyển trạng thái → đánh TIMEOUT (chống kẹt vĩnh viễn).
+
+    Runner đã tự bọc try/except (không để kẹt), đây là lưới an toàn thứ hai cho trường hợp
+    process runner bị giết giữa chừng (OOM, kill ngoài ý muốn).
+    """
+    from chromly.case import pipeline
+
+    actions: list[dict] = []
+    cd = pipeline.cases_dir()
+    if not cd.is_dir():
+        return actions
+    for d in sorted(cd.glob("CASE-*")):
+        mp = d / "meta.json"
+        if not mp.is_file():
+            continue
+        try:
+            meta = json.loads(mp.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        if meta.get("state") != "RUNNING":
+            continue
+        age = now - mp.stat().st_mtime
+        if age < CASE_STALE_S:
+            continue
+        with contextlib.suppress(Exception):
+            pipeline.set_state(d.name, "TIMEOUT")
+        append_event("case-stale", d.name, {"age_s": int(age)})
+        actions.append({"unit": d.name, "action": "case-timeout", "reason": "stale-running"})
     return actions
 
 
@@ -227,6 +269,7 @@ def tick(now: float | None = None, hang_s: float | None = None) -> list[dict]:
     if aux_actions:
         farm._save_state(state)
     actions.extend(aux_actions)
+    actions.extend(_case_stale_check(now))
     return actions
 
 

@@ -1,7 +1,9 @@
 import json
 import os
+import time
 from pathlib import Path
 
+from chromly import paths
 from chromly.fuzz import farm, watchdog
 
 
@@ -66,3 +68,39 @@ def test_tick_degrades_after_crash_loop(monkeypatch, tmp_path: Path) -> None:
     actions = watchdog.tick(now=1000.0, hang_s=5)
     assert actions and actions[0]["action"] == "degraded"
     assert farm._load_state()["units"]["fake"]["degraded"] is True
+
+
+def test_restart_empty_record_no_keyerror(monkeypatch, tmp_path: Path) -> None:
+    _fake_state(monkeypatch, tmp_path, {"pid": None, "restarts": []})
+    monkeypatch.setattr(farm, "default_units", lambda: [])
+    monkeypatch.setattr(farm, "up", lambda units: None)
+    state = farm._load_state()
+    rec = state["units"]["fake"]
+    res = watchdog._restart(state, "fake", rec, "dead", 1000.0)
+    assert res["action"] == "skip"
+
+
+def test_case_stale_check_marks_timeout(monkeypatch, tmp_path: Path) -> None:
+    _fake_state(monkeypatch, tmp_path, {"pid": None, "restarts": []})
+    monkeypatch.setattr(paths, "CASES_DIR", tmp_path / "cases")
+    monkeypatch.setattr(paths, "STORE_DIR", tmp_path / "store")
+    monkeypatch.setattr(paths, "DB_PATH", tmp_path / "store" / "chromly.db")
+    d = tmp_path / "cases" / "CASE-0001"
+    d.mkdir(parents=True)
+    (d / "meta.json").write_text(json.dumps({"id": "CASE-0001", "state": "RUNNING"}))
+    old = 1000.0
+    os.utime(d / "meta.json", (old, old))
+    now = old + watchdog.CASE_STALE_S + 60
+    actions = watchdog._case_stale_check(now)
+    assert actions and actions[0]["action"] == "case-timeout"
+    assert json.loads((d / "meta.json").read_text())["state"] == "TIMEOUT"
+
+
+def test_case_stale_check_skips_fresh(monkeypatch, tmp_path: Path) -> None:
+    _fake_state(monkeypatch, tmp_path, {"pid": None, "restarts": []})
+    monkeypatch.setattr(paths, "CASES_DIR", tmp_path / "cases")
+    d = tmp_path / "cases" / "CASE-0002"
+    d.mkdir(parents=True)
+    (d / "meta.json").write_text(json.dumps({"id": "CASE-0002", "state": "RUNNING"}))
+    now = time.time()
+    assert watchdog._case_stale_check(now) == []

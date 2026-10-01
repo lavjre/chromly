@@ -85,3 +85,74 @@ def test_auto_case_tick(monkeypatch, tmp_path: Path) -> None:
     assert cid == "CASE-0001"
     # lần 2: đã có case (bỏ qua cả crash nguồn fixture) → None
     assert runner.auto_case_tick() is None
+
+
+def test_next_id_max_plus_one_with_gap(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    (paths.CASES_DIR / "CASE-0001").mkdir(parents=True)
+    (paths.CASES_DIR / "CASE-0003").mkdir()
+    assert pipeline._next_id() == "CASE-0004"
+
+
+def test_case_high_score_from_severity(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    con = db.ensure_db()
+    with con:
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, state) VALUES (?, ?, ?, 'triaged')",
+            ("b" * 64, "x", 7),
+        )
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, state) VALUES (?, ?, ?, 'triaged')",
+            ("c" * 64, "x", 2),
+        )
+    con.close()
+    hi = pipeline.new_case("b" * 12)
+    lo = pipeline.new_case("c" * 12)
+    assert runner._case_high_score(hi["id"]) is True
+    assert runner._case_high_score(lo["id"]) is False
+
+
+def test_run_case_no_opencode_not_stuck(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    meta = pipeline.new_case(None)
+    from chromly.orchestrator import agents as agents_mod
+
+    monkeypatch.setattr(agents_mod, "find_opencode", lambda: None)
+    monkeypatch.setattr(
+        budget, "check_case", lambda est_cost=2.0, high_score=True: {"allow": True, "model": "m"}
+    )
+    res = runner.run_case(meta["id"], max_wall=1)
+    assert res["status"] == "no-opencode"
+    assert pipeline.load_case(meta["id"])["state"] == "BUNDLED"
+
+
+def test_run_case_exception_marks_error(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    meta = pipeline.new_case(None)
+    from chromly.orchestrator import agents as agents_mod
+
+    monkeypatch.setattr(agents_mod, "find_opencode", lambda: str(tmp_path / "khong-ton-tai"))
+    monkeypatch.setattr(
+        budget, "check_case", lambda est_cost=2.0, high_score=True: {"allow": True, "model": "m"}
+    )
+    res = runner.run_case(meta["id"], max_wall=1)
+    assert res["status"] == "error"
+    assert pipeline.load_case(meta["id"])["state"] == "ERROR"
+
+
+def test_run_case_help_propagates(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    meta = pipeline.new_case(None)
+    fake = tmp_path / "opencode"
+    fake.write_text('#!/bin/bash\necho "can nguoi" > HELP.md\nexit 0\n')
+    fake.chmod(0o755)
+    from chromly.orchestrator import agents as agents_mod
+
+    monkeypatch.setattr(agents_mod, "find_opencode", lambda: str(fake))
+    monkeypatch.setattr(
+        budget, "check_case", lambda est_cost=2.0, high_score=True: {"allow": True, "model": "m"}
+    )
+    res = runner.run_case(meta["id"], max_wall=10)
+    assert res["status"] == "help"
+    assert (pipeline.case_dir(meta["id"]) / "HELP.md").is_file()

@@ -7,6 +7,7 @@ VERDICT.md trong scratch → copy về cases/<id>/ → state VERDICT|TIMEOUT.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import re
 import shutil
@@ -21,7 +22,8 @@ from chromly.store import db
 
 CASE_SCRATCH = Path("/tmp/opencode/chromly-case")
 MAX_RESUME = 8
-MAX_WALL_DEFAULT = 8 * 3600.0
+MAX_WALL_DEFAULT = 6 * 3600.0  # plan §10.2: case process >6h coi là leak
+HIGH_SCORE_MIN = 6
 VERDICT_RE = re.compile(r"verdict:\s*(validated-crash|no-bug|needs-human|report-draft)")
 
 
@@ -81,19 +83,74 @@ def run_case(
 ) -> dict:
     from chromly.case.pipeline import set_state
 
-    # budget
-    decision = budget.check_case(est_cost=budget.CAPS["case"], high_score=True)
+    # budget — high_score lấy thật từ severity của crash gắn case (không hardcode)
+    high = _case_high_score(case_id)
+    decision = budget.check_case(est_cost=budget.CAPS["case"], high_score=high)
     if not decision.get("allow"):
         return {"case": case_id, "status": "budget-deny", "detail": decision}
     model = model or decision.get("model") or budget.FLASH_MODEL
 
-    s = _prepare_scratch(case_id)
-    set_state(case_id, "RUNNING")
     from chromly.orchestrator.agents import find_opencode
 
     opencode = find_opencode()
     if not opencode:
-        return {"case": case_id, "status": "no-opencode"}
+        return {"case": case_id, "status": "no-opencode"}  # chưa RUNNING — không kẹt
+
+    s = _prepare_scratch(case_id)
+    set_state(case_id, "RUNNING")
+    try:
+        return _run_case_inner(case_id, s, opencode, model, max_wall, resume_session)
+    except Exception as exc:  # noqa: BLE001 — không bao giờ để case kẹt RUNNING
+        with contextlib.suppress(Exception):
+            set_state(case_id, "ERROR")
+        return {"case": case_id, "status": "error", "detail": f"{type(exc).__name__}: {exc}"}
+
+
+def _case_high_score(case_id: str) -> bool:
+    """True nếu case gắn crash severity >= HIGH_SCORE_MIN (điều kiện budget day-cap)."""
+    mp = pipeline.case_dir(case_id) / "meta.json"
+    if not mp.is_file():
+        return False
+    try:
+        crash_hash = json.loads(mp.read_text()).get("crash_hash")
+    except json.JSONDecodeError:
+        return False
+    if not crash_hash:
+        return False
+    con = db.ensure_db()
+    try:
+        row = con.execute(
+            "SELECT severity FROM crashes WHERE hash LIKE ?", (f"{crash_hash[:12]}%",)
+        ).fetchone()
+    finally:
+        con.close()
+    return row is not None and (row["severity"] or 0) >= HIGH_SCORE_MIN
+
+
+def _run_case_inner(
+    case_id: str,
+    s: Path,
+    opencode: str,
+    model: str,
+    max_wall: float,
+    resume_session: str | None,
+) -> dict:
+    from chromly.case.pipeline import set_state
+
+    cmd = [
+        opencode,
+        "run",
+        "--format",
+        "json",
+        "--auto",
+        "--agent",
+        "persona",
+        "-m",
+        model,
+    ]
+    if resume_session:
+        cmd += ["-s", resume_session]
+    cmd += [_mission(case_id)]
 
     cmd = [
         opencode,
@@ -122,7 +179,7 @@ def run_case(
 
     d = pipeline.case_dir(case_id)
     (d / "agent-output.log").write_text(output)
-    for f in ("VERDICT.md", "notes.md"):
+    for f in ("VERDICT.md", "notes.md", "HELP.md"):
         src = s / f
         if src.is_file():
             shutil.copy2(src, d / f)
@@ -135,10 +192,10 @@ def run_case(
     verdict = parse_verdict(verdict_file.read_text()) if verdict_file.is_file() else None
     if verdict:
         state = "VERDICT"
+    elif (d / "HELP.md").is_file():
+        state = "HELP"  # agent cần người — kể cả khi run chạm wall (HELP thắng TIMEOUT)
     elif timed_out:
         state = "TIMEOUT"
-    elif (d / "HELP.md").is_file():
-        state = "HELP"
     else:
         state = "TIMEOUT"
 
