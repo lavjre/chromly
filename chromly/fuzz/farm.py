@@ -332,6 +332,10 @@ def run_fuzz_cmd(args) -> int:
         return run_sampler(
             once=getattr(args, "once", False), interval=getattr(args, "interval", 60.0)
         )
+    if cmd == "diffopt":
+        from chromly.fuzz.diffopt import run_diffopt_cmd
+
+        return run_diffopt_cmd(args)
     if cmd == "seed":
         from chromly.fuzz import replay
 
