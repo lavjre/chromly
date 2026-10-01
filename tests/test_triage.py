@@ -1,5 +1,8 @@
+import os
 from pathlib import Path
 
+from chromly import paths
+from chromly.store import db
 from chromly.triage import classify, dedup, repro, score
 
 
@@ -74,3 +77,65 @@ def test_triage_state_filter() -> None:
     assert triage_state("3/5", False) == "flaky"
     assert triage_state("5/5", True) == "triaged"
     assert triage_state("5/5", False) == "flaky"  # 5/5 nhưng không stable (timeout xen kẽ...)
+
+
+def _fake_asan_d8(tmp_path: Path) -> Path:
+    d8 = tmp_path / "v8" / "out" / "asan" / "d8"
+    d8.parent.mkdir(parents=True)
+    d8.write_text('#!/bin/bash\nif grep -q CRASH "$2"; then exit 134; fi\nexit 0\n')
+    d8.chmod(0o755)
+    return d8
+
+
+def test_triage_once_marks_triaged(monkeypatch, tmp_path: Path) -> None:
+    import hashlib
+
+    from chromly.triage import cli as tcli
+
+    monkeypatch.setattr(paths, "V8_ROOT", tmp_path / "v8")
+    monkeypatch.setattr(paths, "STORE_DIR", tmp_path / "store")
+    monkeypatch.setattr(paths, "DB_PATH", tmp_path / "store" / "chromly.db")
+    _fake_asan_d8(tmp_path)
+    src = "// CRASH\nprint(1);"
+    h = hashlib.sha256(src.encode()).hexdigest()
+    d = tmp_path / "store" / "crashes" / h
+    d.mkdir(parents=True)
+    (d / "program_x.js").write_text(src)
+    con = db.ensure_db()
+    with con:
+        con.execute("INSERT INTO crashes (hash, source, state) VALUES (?, 'fuzzilli', 'raw')", (h,))
+    con.close()
+
+    assert tcli.triage_once() is True
+    con = db.ensure_db()
+    row = con.execute(
+        "SELECT state, fault_type FROM crashes WHERE hash LIKE ?", (h[:12] + "%",)
+    ).fetchone()
+    con.close()
+    assert row["state"] == "triaged"
+
+
+def test_pick_candidate_backoff(monkeypatch, tmp_path: Path) -> None:
+    import hashlib
+    import time as _t
+
+    from chromly.triage import cli as tcli
+
+    monkeypatch.setattr(paths, "STORE_DIR", tmp_path / "store")
+    monkeypatch.setattr(paths, "DB_PATH", tmp_path / "store" / "chromly.db")
+    h = hashlib.sha256(b"x").hexdigest()
+    con = db.ensure_db()
+    with con:
+        con.execute("INSERT INTO crashes (hash, source, state) VALUES (?, 'fuzzilli', 'raw')", (h,))
+    con.close()
+    # chưa từng triage → nhặt
+    assert tcli.pick_candidate() == (h[:12], 5)
+    # vừa triage xong (asan.txt mới) → backoff, không nhặt
+    td = tmp_path / "store" / "triage" / h
+    td.mkdir(parents=True)
+    (td / "asan.txt").write_text("x")
+    assert tcli.pick_candidate() is None
+    # cũ hơn 6h → nhặt lại
+    old = _t.time() - tcli.RAW_RETRY_S - 60
+    os.utime(td / "asan.txt", (old, old))
+    assert tcli.pick_candidate() == (h[:12], 5)

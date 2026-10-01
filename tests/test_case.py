@@ -245,3 +245,33 @@ def test_case_help_alert(monkeypatch, tmp_path: Path) -> None:
     pipeline.set_state(meta["id"], "HELP")
     new = alerts_mod.evaluate()
     assert any(a["rule"] == "case_help" for a in new)
+
+
+def test_auto_candidate_stack_dedup(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    con = db.ensure_db()
+    with con:
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, stack_norm, state) "
+            "VALUES (?, 'oob', 5, 'STACK-1', 'triaged')",
+            ("e" * 64,),
+        )
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, stack_norm, state) "
+            "VALUES (?, 'oob', 5, 'STACK-1', 'triaged')",
+            ("f" * 64,),
+        )
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, stack_norm, state) "
+            "VALUES (?, 'oob', 4, 'STACK-2', 'triaged')",
+            ("9" * 64,),
+        )
+    con.close()
+    # cùng sev 5 → id DESC thắng ("f"); chưa case → là candidate
+    first = runner._auto_candidate(threshold=4)
+    assert first is not None and first["hash"].startswith("f" * 12)
+    # gắn case cho nó → crash cùng stack ("e") phải bị loại, còn crash stack khác ("9")
+    meta = pipeline.new_case(("f" * 64)[:12], source="auto")
+    assert meta["id"]
+    second = runner._auto_candidate(threshold=4)
+    assert second is not None and second["hash"].startswith("9" * 12)

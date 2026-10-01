@@ -241,8 +241,8 @@ AUTO_THRESHOLD = 4
 AUTO_SKIP_SOURCES = ("fixture", "acceptance")
 
 
-def auto_case_tick(threshold: int = AUTO_THRESHOLD) -> str | None:
-    """Tìm crash triaged score ≥ ngưỡng chưa có case → tạo + chạy (budget-gated trong run_case)."""
+def _auto_candidate(threshold: int = AUTO_THRESHOLD) -> dict | None:
+    """Crash triaged đủ điểm, chưa có case, và không trùng stack_norm với crash đã-có-case."""
     con = db.ensure_db()
     try:
         running = con.execute("SELECT COUNT(*) AS n FROM cases WHERE state = 'RUNNING'").fetchone()[
@@ -254,11 +254,20 @@ def auto_case_tick(threshold: int = AUTO_THRESHOLD) -> str | None:
             "SELECT c.hash FROM crashes c LEFT JOIN cases k ON k.crash_id = c.id "
             "WHERE c.state = 'triaged' AND c.severity >= ? AND k.id IS NULL "
             "AND COALESCE(c.source, '') NOT IN (?, ?) "
+            "AND (c.stack_norm IS NULL OR NOT EXISTS ("
+            "  SELECT 1 FROM crashes c2 JOIN cases k2 ON k2.crash_id = c2.id "
+            "  WHERE c2.stack_norm = c.stack_norm AND c2.id != c.id)) "
             "ORDER BY c.severity DESC, c.id DESC LIMIT 1",
             (threshold, *AUTO_SKIP_SOURCES),
         ).fetchone()
     finally:
         con.close()
+    return dict(row) if row else None
+
+
+def auto_case_tick(threshold: int = AUTO_THRESHOLD) -> str | None:
+    """Tìm crash triaged score ≥ ngưỡng chưa có case → tạo + chạy (budget-gated trong run_case)."""
+    row = _auto_candidate(threshold)
     if row is None:
         return None
     meta = pipeline.new_case(row["hash"][:12], source="auto")

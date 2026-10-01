@@ -2,7 +2,7 @@
 # acceptance/M1.sh — milestone M1 (PLAN §13): farm ≥300 exec/s tổng, watchdog, crash store
 source "$(cd "$(dirname "$0")" && pwd)/lib.sh"
 
-SCRIPTS=(M1-fuzzilli M1-farm M1-libfuzzer M1-watchdog M1-crashstore M1-metrics)
+SCRIPTS=(M1-fuzzilli M1-farm M1-libfuzzer M1-watchdog M1-crashstore M1-metrics M1-triage-auto)
 overall=0
 for s in "${SCRIPTS[@]}"; do
     section "$s"

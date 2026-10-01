@@ -66,6 +66,31 @@ def _seed_delta(unit: str, cap: int = 300) -> int:
     return added
 
 
+def _bisect_crash(unit: str, chunk: list[str], batch_out: str) -> int:
+    """Batch nổ → chạy từng file tìm thủ phạm → lưu FILE PHẲNG (ingest bắt được).
+    Không tìm ra thủ phạm đơn lẻ (hiệu ứng tập thể) → fallback lưu nguyên chunk."""
+    binary, _, artifacts = unit_paths(unit)
+    artifacts.mkdir(parents=True, exist_ok=True)
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    saved = 0
+    for path in chunk:
+        try:
+            proc = subprocess.run([str(binary), path], capture_output=True, text=True, timeout=300)
+            out = proc.stdout + proc.stderr
+            bad = proc.returncode != 0 or "ERROR: AddressSanitizer" in out
+        except subprocess.TimeoutExpired as exc:
+            out = f"(timeout) {exc}"
+            bad = True
+        if bad:
+            name = f"crash-{ts}-{Path(path).name}"
+            shutil.copy2(path, artifacts / name)
+            (artifacts / f"{name}.log").write_text(out[-20000:])
+            saved += 1
+    if saved == 0:
+        _save_crash(unit, chunk, batch_out)
+    return saved
+
+
 def _save_crash(unit: str, chunk: list[str], output: str) -> None:
     _, _, artifacts = unit_paths(unit)
     artifacts.mkdir(parents=True, exist_ok=True)
@@ -104,10 +129,10 @@ def lfreplay_once(unit: str) -> dict:
             out = proc.stdout + proc.stderr
             if proc.returncode != 0 or "ERROR: AddressSanitizer" in out:
                 crashes += 1
-                _save_crash(unit, chunk, out)
+                _bisect_crash(unit, chunk, out)
         except subprocess.TimeoutExpired as exc:
             crashes += 1
-            _save_crash(unit, chunk, f"(timeout) {exc}")
+            _bisect_crash(unit, chunk, f"(timeout) {exc}")
     dt = time.monotonic() - t0
     rate = len(files) / dt if dt > 0 else 0.0
     print(

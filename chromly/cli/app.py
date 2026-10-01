@@ -136,6 +136,8 @@ def main(argv: list[str] | None = None) -> int:
     p_tri = sub.add_parser("triage", help="triage crash — repro/classify/score (§5.4, M3)")
     p_tri.add_argument("--hash", default=None, help="hash crash (mặc định: raw mới nhất)")
     p_tri.add_argument("--runs", type=int, default=5, help="số lần repro")
+    p_tri.add_argument("--loop", action="store_true", help="chạy mãi (aux supervisor, M1-09)")
+    p_tri.add_argument("--interval", type=float, default=300.0, help="giây giữa các lượt")
     tri_sub = p_tri.add_subparsers(dest="triage_cmd")
     tri_sub.add_parser("list", help="liệt kê crashes + trạng thái")
 
