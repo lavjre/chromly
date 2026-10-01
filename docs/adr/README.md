@@ -19,3 +19,4 @@ Mỗi quyết định kiến trúc của chromly = 1 file, 10–20 dòng. Format
 | [009](0009-case-direct-on-vm.md) | Case chạy trực tiếp trên VM (supersede 002) | Accepted |
 | [010](0010-libfuzzer-engine-defer.md) | libFuzzer engine: replay v0, engine để v2 (shim) | Superseded by [011](0011-libfuzzer-engine-relink.md) |
 | [011](0011-libfuzzer-engine-relink.md) | libFuzzer engine: re-link ninja + vendor source (không patch V8) | Accepted |
+| [012](0012-tot-verify.md) | ToT verify: build mới nhất để xác nhận "unfixed" | Accepted |
