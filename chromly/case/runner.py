@@ -241,14 +241,20 @@ AUTO_THRESHOLD = 4
 AUTO_SKIP_SOURCES = ("fixture", "acceptance")
 
 
+def _case_running() -> bool:
+    con = db.ensure_db()
+    try:
+        n = con.execute("SELECT COUNT(*) AS n FROM cases WHERE state = 'RUNNING'").fetchone()["n"]
+    finally:
+        con.close()
+    return n > 0
+
+
 def _auto_candidate(threshold: int = AUTO_THRESHOLD) -> dict | None:
     """Crash triaged đủ điểm, chưa có case, và không trùng stack_norm với crash đã-có-case."""
     con = db.ensure_db()
     try:
-        running = con.execute("SELECT COUNT(*) AS n FROM cases WHERE state = 'RUNNING'").fetchone()[
-            "n"
-        ]
-        if running:
+        if _case_running():
             return None
         row = con.execute(
             "SELECT c.hash FROM crashes c LEFT JOIN cases k ON k.crash_id = c.id "
@@ -283,11 +289,53 @@ def auto_case_tick(threshold: int = AUTO_THRESHOLD) -> str | None:
     return meta["id"]
 
 
+def pick_resume_case() -> tuple[str, str] | None:
+    """(case_id, session_id) cho case TIMEOUT còn lượt resume (< MAX_RESUME)."""
+    con = db.ensure_db()
+    try:
+        rows = con.execute(
+            "SELECT id FROM cases WHERE state = 'TIMEOUT' ORDER BY rowid DESC LIMIT 20"
+        ).fetchall()
+        for r in rows:
+            try:
+                meta = pipeline.load_case(r["id"])
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+            if int(meta.get("resumes", 0)) >= MAX_RESUME:
+                continue
+            sess = con.execute(
+                "SELECT session_id FROM runs WHERE case_id = ? AND session_id != '' "
+                "ORDER BY id DESC LIMIT 1",
+                (r["id"],),
+            ).fetchone()
+            if sess:
+                return r["id"], sess["session_id"]
+    finally:
+        con.close()
+    return None
+
+
+def auto_resume_tick() -> str | None:
+    """Case TIMEOUT còn lượt → chạy tiếp với session cũ (cap MAX_RESUME enforce trong run_case)."""
+    if _case_running():
+        return None
+    pick = pick_resume_case()
+    if pick is None:
+        return None
+    case_id, session = pick
+    print(f"[auto] resume {case_id} (session {session[:16]})", flush=True)
+    res = run_case(case_id, resume_session=session)
+    print(f"[auto] {case_id} → {res.get('status')} verdict={res.get('verdict')}", flush=True)
+    return case_id
+
+
 def run_case_auto(interval: float = 900.0) -> int:
     """Aux loop: mỗi `interval` giây quét candidate mới và chạy case (1/lúc)."""
     while True:
         try:
             cid = auto_case_tick()
+            if cid is None:
+                cid = auto_resume_tick()
             if cid is None:
                 print(f"[{time.strftime('%H:%M:%S')}] auto-case: 0 candidate", flush=True)
         except Exception as exc:  # noqa: BLE001 — loop dài hạn

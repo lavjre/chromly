@@ -275,3 +275,24 @@ def test_auto_candidate_stack_dedup(monkeypatch, tmp_path: Path) -> None:
     assert meta["id"]
     second = runner._auto_candidate(threshold=4)
     assert second is not None and second["hash"].startswith("9" * 12)
+
+
+def test_pick_resume_case(monkeypatch, tmp_path: Path) -> None:
+    _setup(monkeypatch, tmp_path)
+    meta = pipeline.new_case(None)
+    cid = meta["id"]
+    pipeline.set_state(cid, "TIMEOUT")
+    con = db.ensure_db()
+    with con:
+        con.execute(
+            "INSERT INTO runs (case_id, session_id, model, outcome) "
+            "VALUES (?, ?, 'm', 'case:TIMEOUT:none')",
+            (cid, "ses_abc123"),
+        )
+    con.close()
+    assert runner.pick_resume_case() == (cid, "ses_abc123")
+    # hết lượt resume → không nhặt nữa
+    m = pipeline.load_case(cid)
+    m["resumes"] = runner.MAX_RESUME
+    (pipeline.case_dir(cid) / "meta.json").write_text(json.dumps(m))
+    assert runner.pick_resume_case() is None
