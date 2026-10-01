@@ -36,7 +36,7 @@ def artifact_dir(hash_prefix: str) -> Path:
 
 
 def pick_script(ad: Path) -> Path:
-    js = sorted(ad.glob("*.js"))
+    js = sorted(ad.glob("program_*.js")) or sorted(ad.glob("*.js"))
     if js:
         return js[0]
     fzil = sorted(ad.glob("*.fzil"))

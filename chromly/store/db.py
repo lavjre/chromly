@@ -6,6 +6,7 @@ Telemetry đầy đủ · knowledge · benchmark thêm ở M3/M4 (migration tăn
 from __future__ import annotations
 
 import sqlite3
+import sys
 from pathlib import Path
 
 from chromly import paths
@@ -323,4 +324,10 @@ def ensure_db(path: Path | str | None = None) -> sqlite3.Connection:
         init_schema(con)
     elif version < SCHEMA_VERSION:
         _migrate(con, version)
+    elif version > SCHEMA_VERSION:
+        print(
+            f"[db] cảnh báo: DB schema v{version} > code v{SCHEMA_VERSION} — code cũ hơn DB; "
+            "cập nhật code trước khi ghi tiếp",
+            file=sys.stderr,
+        )
     return con

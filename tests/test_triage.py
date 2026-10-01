@@ -64,3 +64,13 @@ def test_repro_run_fake_d8(tmp_path: Path) -> None:
     r2 = repro.repro_run(d8, ok, runs=5)
     assert r2["crashed"] == 0
     assert r2["stable"] is False
+
+
+def test_triage_state_filter() -> None:
+    from chromly.triage.cli import triage_state
+
+    assert triage_state("0/5", False) == "raw"
+    assert triage_state("1/5", False) == "flaky"
+    assert triage_state("3/5", False) == "flaky"
+    assert triage_state("5/5", True) == "triaged"
+    assert triage_state("5/5", False) == "flaky"  # 5/5 nhưng không stable (timeout xen kẽ...)

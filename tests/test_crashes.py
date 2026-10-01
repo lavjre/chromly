@@ -58,3 +58,24 @@ def test_metrics_sample_and_total(monkeypatch, tmp_path: Path) -> None:
     assert (
         metrics.total_execs({"a": {"execs_per_sec": 100.5}, "b": {"execs_per_sec": None}}) == 100.5
     )
+
+
+def test_ingest_orphan_js_and_fzil_sidecar(monkeypatch, tmp_path: Path) -> None:
+    import hashlib
+
+    src = _setup(monkeypatch, tmp_path)
+    # .js mồ côi (fuzzilli ghi .js trước .fzil — thoát giữa chừng) → phải được nhập
+    (src / "program_orphan.js").write_text("print(1);")
+    res1 = crashes.ingest_once()
+    assert sum(1 for r in res1 if not r["dup"]) == 1
+
+    # có .fzil sidecar → chỉ .fzil canonical, .js bị skip
+    (src / "program_A.fzil").write_bytes(b"PB-A")
+    (src / "program_A.js").write_text("print(2);")
+    res2 = crashes.ingest_once()
+    new = [r for r in res2 if not r["dup"]]
+    assert len(new) == 1
+    h = hashlib.sha256(b"PB-A").hexdigest()
+    dest = paths.STORE_DIR / "crashes" / h
+    assert (dest / "program_A.fzil").is_file()
+    assert (dest / "program_A.js").is_file()  # sidecar được kèm theo

@@ -8,6 +8,17 @@ from chromly.store import db
 from chromly.triage import classify, dedup, repro, score
 
 
+def triage_state(crashed: str, stable: bool) -> str:
+    """flaky filter (§5.4): 0 repro → raw; chập chờn → flaky (không auto-case); ổn → triaged."""
+    n_ok, _, _ = crashed.partition("/")
+    crashed_n = int(n_ok) if n_ok.isdigit() else 0
+    if crashed_n == 0:
+        return "raw"
+    if not stable:
+        return "flaky"
+    return "triaged"
+
+
 def _latest_raw_crash() -> str | None:
     con = db.ensure_db()
     try:
@@ -56,18 +67,20 @@ def run_triage_cmd(args: argparse.Namespace) -> int:
     stack_h = dedup.stack_hash(asan_text, fault["class"])
     h12 = res["hash"][:12]
 
+    state = triage_state(res["crashed"], res["stable"])
+
     con = db.ensure_db()
     try:
         with con:
             con.execute(
                 "UPDATE crashes SET fault_type = ?, stack_norm = ?, severity = ?, "
-                "state = 'triaged' WHERE hash LIKE ?",
-                (fault["class"], stack_h, sc["score"], f"{h12}%"),
+                "state = ? WHERE hash LIKE ?",
+                (fault["class"], stack_h, sc["score"], state, f"{h12}%"),
             )
     finally:
         con.close()
 
-    print(f"triage {h12}: repro={res['crashed']} stable={res['stable']}")
+    print(f"triage {h12}: repro={res['crashed']} stable={res['stable']} → state={state}")
     reasons = ", ".join(sc["reasons"]) or "no reasons"
     print(f"  class={fault['class']} access={fault['access']} score={sc['score']} ({reasons})")
     print(f"  artifacts: {repro.triage_dir(res['hash'])}")

@@ -15,7 +15,7 @@ def reports_dir() -> Path:
 
 
 def weekly_report() -> Path:
-    year, week, _ = time.localtime().tm_year, time.strftime("%V"), time.localtime().tm_wday
+    year, week = time.localtime().tm_year, time.strftime("%V")
     path = reports_dir() / f"weekly-{year}-W{week}.md"
 
     lines = [f"# chromly weekly digest — {year}-W{week}", ""]

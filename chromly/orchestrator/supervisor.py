@@ -31,7 +31,7 @@ AUX_SPECS: dict[str, list[str]] = {
 }
 
 
-def _spawn_aux(name: str, rec: dict | None) -> dict:
+def _spawn_aux(name: str) -> dict:
     log = farm.LOGS_DIR / f"aux-{name}.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     cmd = [sys.executable, "-m", "chromly.cli.app", *AUX_SPECS[name]]
@@ -59,7 +59,7 @@ def up_all() -> dict:
         if rec and farm._alive(rec):
             res[name] = "already-running"
             continue
-        aux[name] = _spawn_aux(name, rec)
+        aux[name] = _spawn_aux(name)
         res[name] = f"started pid={aux[name]['pid']}"
     farm._save_state(state)
     return res

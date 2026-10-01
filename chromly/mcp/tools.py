@@ -112,9 +112,14 @@ def case_update(args: dict) -> dict:
         con.close()
 
 
+VALID_BUILDS = ("asan", "calib", "release", "fuzzilli")
+
+
 def repro_run(args: dict) -> dict:
     hash_prefix = str(args["crash_id"])
     build = str(args.get("build", "asan"))
+    if build not in VALID_BUILDS:
+        raise ValueError(f"build không hợp lệ: {build} (chọn: {', '.join(VALID_BUILDS)})")
     d8 = paths.V8_ROOT / "out" / build / "d8"
     ad = repro_mod.artifact_dir(hash_prefix)
     script = repro_mod.pick_script(ad)
@@ -134,7 +139,11 @@ def build_request(args: dict) -> dict:
     import sys
     import uuid
 
+    from chromly.builds.args import CONFIG_NAMES
+
     config = str(args.get("config", "asan"))
+    if config not in CONFIG_NAMES:
+        raise ValueError(f"config không hợp lệ: {config} (chọn: {', '.join(CONFIG_NAMES)})")
     build_id = f"{config}-{uuid.uuid4().hex[:8]}"
     log = paths.STORE_DIR / "builds" / f"{build_id}.request.log"
     log.parent.mkdir(parents=True, exist_ok=True)

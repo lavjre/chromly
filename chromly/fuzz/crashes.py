@@ -69,8 +69,14 @@ def ingest_once() -> list[dict]:
             for f in sorted(src.iterdir()):
                 if not f.is_file():
                     continue
-                # fuzzilli: .fzil là canonical; .js là sidecar cùng basename
-                if unit_name == "fuzzilli" and f.suffix == ".js":
+                # fuzzilli: .fzil là canonical; .js là sidecar cùng basename (ghi SAU .js
+                # trong Storage.swift — .js xuất hiện trước). .js mồ côi (thoát giữa chừng,
+                # không có .fzil) vẫn phải nhập, nếu không crash đó bị bỏ vĩnh viễn.
+                if (
+                    unit_name == "fuzzilli"
+                    and f.suffix == ".js"
+                    and f.with_suffix(".fzil").is_file()
+                ):
                     continue
                 st = f.stat()
                 key = f"{f}:{st.st_size}:{int(st.st_mtime)}"

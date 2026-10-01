@@ -19,6 +19,9 @@ chromly = "chromly.cli.app:main"
 [tool.setuptools.packages.find]
 include = ["chromly*"]
 
+[tool.setuptools.package-data]
+chromly = ["builds/args/*.gn"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
