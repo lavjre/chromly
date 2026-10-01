@@ -31,11 +31,10 @@ def triage_state(crashed: str, stable: bool) -> str:
 
 
 def _triage_age(full_hash: str) -> float | None:
-    """Tuổi (giây) của lần triage gần nhất; None nếu chưa từng."""
-    asan = paths.STORE_DIR / "triage" / full_hash / "asan.txt"
-    if not asan.is_file():
-        return None
-    return time.time() - asan.stat().st_mtime
+    """Tuổi (giây) của lần triage gần nhất (kể cả lần lỗi); None nếu chưa từng."""
+    td = paths.STORE_DIR / "triage" / full_hash
+    stamps = [p.stat().st_mtime for p in (td / "asan.txt", td / "error.txt") if p.is_file()]
+    return time.time() - max(stamps) if stamps else None
 
 
 def pick_candidate() -> tuple[str, int] | None:
@@ -65,7 +64,19 @@ def triage_one(hash_prefix: str, runs: int = 5) -> int:
     try:
         res = repro.run_triage(hash_prefix, runs=runs)
     except (FileNotFoundError, RuntimeError) as exc:
-        print(f"triage lỗi: {exc}")
+        # ghi dấu lỗi để backoff không quay crash không-triagable mỗi tick
+        con = db.ensure_db()
+        try:
+            row = con.execute(
+                "SELECT hash FROM crashes WHERE hash LIKE ?", (f"{hash_prefix}%",)
+            ).fetchone()
+        finally:
+            con.close()
+        if row:
+            td = paths.STORE_DIR / "triage" / row["hash"]
+            td.mkdir(parents=True, exist_ok=True)
+            (td / "error.txt").write_text(str(exc))
+        print(f"triage lỗi ({hash_prefix}): {exc}", flush=True)
         return 1
 
     asan_text = (repro.triage_dir(res["hash"]) / "asan.txt").read_text()

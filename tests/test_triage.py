@@ -139,3 +139,25 @@ def test_pick_candidate_backoff(monkeypatch, tmp_path: Path) -> None:
     old = _t.time() - tcli.RAW_RETRY_S - 60
     os.utime(td / "asan.txt", (old, old))
     assert tcli.pick_candidate() == (h[:12], 5)
+
+
+def test_backoff_covers_failed_attempt(monkeypatch, tmp_path: Path) -> None:
+    """Lỗi không-triagable (error.txt) cũng tính vào backoff — không quay mỗi tick."""
+    import hashlib
+
+    from chromly.triage import cli as tcli
+
+    monkeypatch.setattr(paths, "V8_ROOT", tmp_path / "v8")
+    monkeypatch.setattr(paths, "STORE_DIR", tmp_path / "store")
+    monkeypatch.setattr(paths, "DB_PATH", tmp_path / "store" / "chromly.db")
+    h = hashlib.sha256(b"bin").hexdigest()
+    con = db.ensure_db()
+    with con:
+        con.execute("INSERT INTO crashes (hash, source, state) VALUES (?, 'fuzzilli', 'raw')", (h,))
+    con.close()
+    # không có script js/fzil → triage_one lỗi, ghi error.txt
+    assert tcli.triage_once() is True
+    td = tmp_path / "store" / "triage" / h
+    assert (td / "error.txt").is_file()
+    # lượt kế: bị backoff, không nhặt lại
+    assert tcli.pick_candidate() is None
