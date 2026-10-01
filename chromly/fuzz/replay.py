@@ -7,6 +7,8 @@ theo batch + bắt crash; engine thật = follow-up (task M1-08/cần ADR wiring
 
 from __future__ import annotations
 
+import hashlib
+import random
 import shutil
 import subprocess
 import sys
@@ -27,19 +29,41 @@ def unit_paths(unit: str) -> tuple[Path, Path, Path]:
 
 
 def seed_corpus(unit: str) -> int:
-    """Parser: seed từ mjsunit (JS). Wasm: để trống (follow-up)."""
+    """Parser: seed lần đầu từ mjsunit (JS) + top-up test delta (audit) mỗi lần chạy.
+    Wasm: để trống (follow-up)."""
     _, corpus, _ = unit_paths(unit)
     corpus.mkdir(parents=True, exist_ok=True)
-    if any(corpus.iterdir()):
-        return 0
     if unit != "libfuzzer-parser":
         return 0
-    src_dir = paths.V8_ROOT / "test" / "mjsunit"
     n = 0
-    for f in sorted(src_dir.glob("*.js"))[:200]:
-        shutil.copy2(f, corpus / f.name)
-        n += 1
+    # lần đầu: mjsunit root (nếu corpus trống)
+    if not any(corpus.iterdir()):
+        src_dir = paths.V8_ROOT / "test" / "mjsunit"
+        for f in sorted(src_dir.glob("*.js"))[:200]:
+            shutil.copy2(f, corpus / f.name)
+            n += 1
+    # top-up: test mới sau checkout (audit đã tải về) — biến tri thức upstream thành seed
+    n += _seed_delta(unit)
     return n
+
+
+def _seed_delta(unit: str, cap: int = 300) -> int:
+    """Copy test mới sau checkout (store/regress-audit/tests) vào corpus, dedup sha256."""
+    _, corpus, _ = unit_paths(unit)
+    src = paths.STORE_DIR / "regress-audit" / "tests"
+    if not src.is_dir():
+        return 0
+    added = 0
+    for f in sorted(src.rglob("*.js")):
+        if added >= cap:
+            break
+        data = f.read_bytes()
+        dest = corpus / f"{hashlib.sha256(data).hexdigest()[:12]}-{f.name}"
+        if dest.exists():
+            continue
+        dest.write_bytes(data)
+        added += 1
+    return added
 
 
 def _save_crash(unit: str, chunk: list[str], output: str) -> None:
@@ -60,7 +84,12 @@ def lfreplay_once(unit: str) -> dict:
     if not Path(binary).is_file():
         raise FileNotFoundError(f"thiếu binary {binary}")
     seeded = seed_corpus(unit)
-    files = sorted(p for p in corpus.iterdir() if p.is_file())[:MAX_FILES]
+    all_files = [p for p in corpus.iterdir() if p.is_file()]
+    if len(all_files) > MAX_FILES:
+        # xoay theo giờ: seed mới sớm được chạy (sorted()[:N] cố định sẽ chôn seed mới)
+        files = random.Random(int(time.time() // 3600)).sample(all_files, MAX_FILES)
+    else:
+        files = sorted(all_files)
     if not files:
         print("Execs / Second: 0.0  (files=0)", flush=True)
         return {"files": 0, "crashes": 0, "rate": 0.0, "seeded": seeded}

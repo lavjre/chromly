@@ -332,6 +332,16 @@ def run_fuzz_cmd(args) -> int:
         return run_sampler(
             once=getattr(args, "once", False), interval=getattr(args, "interval", 60.0)
         )
+    if cmd == "seed":
+        from chromly.fuzz import replay
+
+        total = 0
+        for unit in LIBFUZZER_TARGETS:
+            n = replay.seed_corpus(unit)
+            print(f"{unit}: +{n} seed")
+            total += n
+        print(f"seed: +{total} (tổng)")
+        return 0
     if cmd == "corpus":
         from chromly.fuzz import corpus
 
