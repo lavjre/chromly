@@ -129,3 +129,20 @@ def test_run_once_normalizes_addresses(monkeypatch, tmp_path: Path) -> None:
     prog = tmp_path / "fuzz" / "fuzzilli" / "corpus" / "program_0.js"
     a = diffopt.run_once(d8, prog, [])
     assert "0xADDR" in a["out"] and "0xdeadbeef1a2b" not in a["out"]
+
+
+def test_normalize_error_blocks() -> None:
+    """Stack-overflow/attribution khác tier phải collapse; khác message thật vẫn giữ."""
+    a = (
+        "unnamed:3: RangeError: Maximum call stack size exceeded\n"
+        "        function f6() {\n"
+        "                   ^\n"
+        "RangeError: Maximum call stack size exceeded\n"
+        "    at f6 (unnamed:3:20)\n"
+        "    at f6 (unnamed:4:20)\n"
+    )
+    b = a.replace("unnamed:3:", "unnamed:4:").replace("(unnamed:3:20)", "(unnamed:4:13)")
+    b = b.replace("        function f6() {", "            return f6();")
+    assert diffopt._normalize(a) == diffopt._normalize(b)
+    c = a.replace("RangeError: Maximum call stack size exceeded", "TypeError: x is not a function")
+    assert diffopt._normalize(a) != diffopt._normalize(c)

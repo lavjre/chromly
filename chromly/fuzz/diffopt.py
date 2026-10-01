@@ -35,6 +35,9 @@ MAX_OUT = 4000
 DEFAULT_BUILD = "release"
 DEFAULT_SECONDS = 900.0
 _ADDR_RE = re.compile(r"0x[0-9a-fA-F]+")
+_CARET_RE = re.compile(r"^\s*\^+\s*$")
+_FRAME_RE = re.compile(r"^\s+at .*$")
+_ERR_HEAD_RE = re.compile(r"^(\S+):(\d+): (\w*Error(?: \[[^\]]+\])?): ")
 OOM_MARKERS = (
     "Fatal JavaScript out of memory",
     "CALL_AND_RETRY_LAST",
@@ -99,9 +102,25 @@ def pick_programs(cursor: str, limit: int) -> list[Path]:
 
 
 def _normalize(out: str) -> str:
-    """Chuẩn hoá địa chỉ heap (mỗi lần chạy khác nhau) — giữ so sánh được cho
-    program in warning/%DebugPrint chứa địa chỉ."""
-    return _ADDR_RE.sub("0xADDR", out)
+    """Chuẩn hoá output nhiễu-config (không phải khác biệt hành vi):
+
+    - địa chỉ heap (mỗi lần chạy khác nhau);
+    - block uncaught-error: vị trí `file:line[:col]`, dòng snippet + caret, các frame
+      `at ...` — stack-overflow/attribution khác nhau theo tier JIT (sparkplug/maglev…)
+      nhưng cùng một lỗi (FP lớp thật gặp 2026-10-02, program f6 đệ quy: A báo ở
+      unnamed:3:20, B báo ở unnamed:4:13 — cùng RangeError).
+    """
+    out = _ADDR_RE.sub("0xADDR", out)
+    keep: list[str] = []
+    for line in out.splitlines():
+        if _CARET_RE.match(line):
+            if keep:
+                keep.pop()  # dòng snippet ngay trước caret
+            continue
+        if _FRAME_RE.match(line):
+            continue
+        keep.append(_ERR_HEAD_RE.sub(r"\1:N: \3: ", line))
+    return "\n".join(keep)
 
 
 def run_once(d8: Path, program: Path, flags: list[str], timeout: int = 20) -> dict:
