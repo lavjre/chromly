@@ -42,6 +42,88 @@ Chỉ đọc/ghi trong workdir này bằng đường dẫn tuyệt đối. Khôn
 """
 
 
+SECURITY_KW = (
+    "security",
+    "bounds",
+    " oob",
+    "out-of-bounds",
+    "out of bounds",
+    "use-after-free",
+    "use after free",
+    " uaf",
+    "type confusion",
+    "overflow",
+    "underflow",
+    "corrupt",
+    "sandbox",
+    "harden",
+    "fix crash",
+    "cve",
+    "miscompile",
+    "uninitialized",
+    "check failed",
+)
+HOT_PATHS = (
+    "src/compiler/",
+    "src/maglev/",
+    "src/turboshaft/",
+    "src/wasm/",
+    "src/objects/",
+    "src/heap/",
+    "src/runtime/",
+    "src/builtins/",
+    "src/parsing/",
+    "src/regexp/",
+    "src/interpreter/",
+    "src/sandbox/",
+    "src/deoptimizer/",
+    "src/codegen/",
+)
+NOISE_KW = (
+    "agents",
+    "roll ",
+    "reland",
+    "cleanup",
+    "refactor",
+    "perf",
+    "infra",
+    "docs",
+    "typo",
+    "metagen",
+    "owners",
+    "intl",
+    "build",
+    "tidy",
+    "format",
+)
+
+
+def priority_score(subject: str, changed_paths: list[str]) -> int:
+    """Điểm ưu tiên review (M2-09): security-class trước, dìm noise (variant-first §5.3)."""
+    s = (subject or "").lower()
+    score = 0
+    if any(k in s for k in SECURITY_KW):
+        score += 3
+    if any(any(x.startswith(hp) for hp in HOT_PATHS) for x in changed_paths):
+        score += 2
+    if any(k in s for k in NOISE_KW):
+        score -= 4
+    if changed_paths and all(x.startswith("test/") for x in changed_paths):
+        score -= 2
+    return score
+
+
+def _subject_for(sha: str) -> tuple[str, list[str]]:
+    meta_p = intel_dir() / sha / "meta.json"
+    if not meta_p.is_file():
+        return "", []
+    try:
+        meta = json.loads(meta_p.read_text())
+    except json.JSONDecodeError:
+        return "", []
+    return meta.get("subject", ""), meta.get("paths", []) or []
+
+
 def pending_commits(limit: int = 5, sha: str | None = None) -> list[dict]:
     con = db.ensure_db()
     try:
@@ -51,12 +133,21 @@ def pending_commits(limit: int = 5, sha: str | None = None) -> list[dict]:
             ).fetchall()
         else:
             rows = con.execute(
-                "SELECT \"commit\", paths FROM intel WHERE review_status = 'pending' "
+                "SELECT \"commit\", paths, created FROM intel WHERE review_status = 'pending' "
                 "ORDER BY created DESC LIMIT ?",
-                (limit,),
+                (max(limit * 8, 40),),
             ).fetchall()
     finally:
         con.close()
+    if not sha:
+        # ưu tiên security-class (M2-09) trước khi cắt limit
+        items = []
+        for r in rows:
+            subject, meta_paths = _subject_for(r["commit"])
+            changed = meta_paths or json.loads(r["paths"] or "[]")
+            items.append((priority_score(subject, changed), r["created"] or "", r, subject))
+        items.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        rows = [x[2] for x in items[:limit]]
     return [{"sha": r["commit"], "paths": r["paths"]} for r in rows]
 
 
@@ -171,7 +262,17 @@ def run_review(sha: str) -> dict:
     }
 
 
-def _review_batch(limit: int, sha: str | None) -> int:
+def _review_batch(limit: int, sha: str | None, dry_run: bool = False) -> int:
+    if dry_run:
+        for tgt in pending_commits(limit=limit):
+            subject, changed = _subject_for(tgt["sha"])
+            if not changed:
+                try:
+                    changed = json.loads(tgt["paths"] or "[]")
+                except json.JSONDecodeError:
+                    changed = []
+            print(f"score={priority_score(subject, changed)} {tgt['sha'][:12]} {subject}")
+        return 0
     from chromly.orchestrator.budget import tier
 
     t = tier()
@@ -211,9 +312,15 @@ def _review_batch(limit: int, sha: str | None) -> int:
 
 
 def run_intel_review(
-    limit: int = 5, sha: str | None = None, loop: bool = False, interval: float = 7200.0
+    limit: int = 5,
+    sha: str | None = None,
+    loop: bool = False,
+    interval: float = 7200.0,
+    dry_run: bool = False,
 ) -> int:
     """Review commit pending. loop=True: chạy mãi mỗi `interval` giây (aux supervisor)."""
+    if dry_run:
+        return _review_batch(limit=limit, sha=sha, dry_run=True)
     while True:
         failed = _review_batch(limit=limit, sha=sha)
         if not loop or sha:

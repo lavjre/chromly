@@ -314,6 +314,7 @@ def run_intel_cmd(args: argparse.Namespace) -> int:
             sha=getattr(args, "sha", None),
             loop=getattr(args, "loop", False),
             interval=getattr(args, "interval", 7200.0),
+            dry_run=getattr(args, "dry_run", False),
         )
     if cmd == "variants":
         from chromly.intel.variants import run_variants_cmd
