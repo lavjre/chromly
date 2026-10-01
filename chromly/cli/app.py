@@ -72,6 +72,9 @@ def main(argv: list[str] | None = None) -> int:
     p_rev.add_argument("--interval", type=float, default=7200.0, help="giây giữa các lượt (loop)")
     p_var = intel_sub.add_parser("variants", help="sinh + chạy variant test (M2-03)")
     p_var.add_argument("--sha", default=None, help="mặc định: commit reviewed mới nhất")
+    p_aud = intel_sub.add_parser("audit", help="upstream-regress delta audit (M2-06)")
+    p_aud.add_argument("--max", type=int, default=40, help="số test tối đa")
+    p_aud.add_argument("--dry-run", action="store_true", help="chỉ liệt kê, không chạy")
     intel_sub.add_parser("status", help="trạng thái intel (M2-05)")
 
     p_recon = sub.add_parser("recon", help="recon & surface — archaeology/report (§2, M4-08)")
@@ -210,6 +213,10 @@ def main(argv: list[str] | None = None) -> int:
 
         return run_fuzz_cmd(args)
     if args.cmd == "intel":
+        if getattr(args, "intel_cmd", None) == "audit":
+            from chromly.intel.regress_audit import run_audit_cmd
+
+            return run_audit_cmd(args)
         from chromly.intel.watcher import run_intel_cmd
 
         return run_intel_cmd(args)
