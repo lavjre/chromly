@@ -16,7 +16,16 @@ def _setup(monkeypatch, tmp_path: Path) -> None:
 def _fake_d8(tmp_path: Path) -> Path:
     d8 = tmp_path / "v8" / "out" / "asan" / "d8"
     d8.parent.mkdir(parents=True)
-    d8.write_text('#!/bin/bash\nif grep -q CRASH "$2"; then exit 134; fi\necho ok\nexit 0\n')
+    d8.write_text(
+        "#!/bin/bash\n"
+        'if grep -q FLAGERR "$2"; then\n'
+        '  echo "Flag processing error: Contradictory value for readonly flag;"\n'
+        "  exit 134\n"
+        "fi\n"
+        'if grep -q CRASH "$2"; then exit 134; fi\n'
+        "echo ok\n"
+        "exit 0\n"
+    )
     d8.chmod(0o755)
     return d8
 
@@ -52,3 +61,25 @@ def test_generate_and_run(monkeypatch, tmp_path: Path) -> None:
 def test_generate_no_variants(monkeypatch, tmp_path: Path) -> None:
     _setup(monkeypatch, tmp_path)
     assert variants.generate_for("a" * 40) == []
+
+
+def test_flag_conflict_not_crash(monkeypatch, tmp_path: Path) -> None:
+    """Readonly-flag abort của d8 không được tính là crash / không vào crash store."""
+    _setup(monkeypatch, tmp_path)
+    _fake_d8(tmp_path)
+    sha = "f" * 40
+    d = variants.intel_dir() / sha
+    d.mkdir(parents=True)
+    (d / "variants.json").write_text(
+        json.dumps([{"title": "v-flag", "confidence": "high", "test_js": "// FLAGERR\nprint(1);"}])
+    )
+
+    variants.generate_for(sha)
+    summary = variants.run_variants(sha)
+    assert summary["results"][0]["outcome"] == "flag-conflict"
+
+    from chromly.store import db
+
+    con = db.ensure_db()
+    n = con.execute("SELECT COUNT(*) AS n FROM crashes").fetchone()["n"]
+    assert n == 0, "flag-conflict không được tạo crash row"

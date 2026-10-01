@@ -2,8 +2,11 @@
 
 - generate: mỗi variant có `test_js` → `tests/INTEL-<sha12>/variant-N.js` (kèm header comment).
 - run: chạy từng test trên `out/asan/d8` (+ `out/release/d8` nếu có) — timeout 60s,
-  outcome: crash | error | ok | timeout. Kết quả ghi results.json + DB intel.variant_flag.
+  outcome: crash | flag-conflict | oom | error | ok | timeout. Kết quả ghi results.json
+  + DB intel.variant_flag.
 - crash → crash store row (source='variant', score 5, triaged) → auto-case pipeline bắt.
+- flag-conflict: d8 abort vì cờ xung đột build (readonly flag, vd --verify-turboshaft) —
+  test không chạy được, KHÔNG phải crash (FP filter).
 - run_pending_variants: quét reviewed commits chưa chạy (chỉ V8-runnable) — dùng sau review.
 """
 
@@ -26,6 +29,13 @@ OOM_MARKERS = (
     "Fatal JavaScript out of memory",
     "CALL_AND_RETRY_LAST",
     "Fatal process out of memory",
+)
+# d8 abort khi cờ xung đột build (DEFINE_BOOL_READONLY) — test không chạy được,
+# không phải lỗi của V8. Vd: variant hypothesis cần --verify-turboshaft nhưng build
+# tắt cứng (is_debug=false) → "Contradictory value for readonly flag".
+FLAG_CONFLICT_MARKERS = (
+    "Flag processing error",
+    "Contradictory value for readonly flag",
 )
 
 
@@ -96,6 +106,8 @@ def run_test(d8: Path, test: Path) -> dict:
         output = full[-2000:]
         if any(m in full for m in OOM_MARKERS):
             outcome = "oom"  # test tự ép OOM → không phải crash (FP filter §5.4)
+        elif any(m in full for m in FLAG_CONFLICT_MARKERS):
+            outcome = "flag-conflict"  # cờ xung đột build → không chạy được (FP filter)
         elif rc in CRASH_CODES or rc < 0:
             outcome = "crash"
         elif rc != 0 or "Uncaught" in output or "uncaught" in output:
