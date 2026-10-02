@@ -3,6 +3,7 @@
 Autonomous V8/Chrome bug-hunting system — fuzzing 24/7 (no LLM) + patch-diff intel + OpenCode agent cases (persona Nini). Target box: Ubuntu VM 8 vCPU · 16 GB · 200 GB.
 
 - **Kế hoạch:** [PLAN.md](PLAN.md) — đọc **Chương 1 (§1) Research Philosophy** trước, rồi mới tới kiến trúc.
+- **Đọc monitor:** [docs/info-guide.md](docs/info-guide.md) — hướng dẫn đọc `chromly info` + event feed (`chromly trace`).
 - **Tool inventory:** [TOOLS.md](TOOLS.md) — 30 callable surfaces at M3.
 - **Quyết định kiến trúc:** [docs/adr/](docs/adr/) — không ADR, không merge.
 - **Runtime:** `runtime/` — symlink vào `~/.config/opencode/` (`persona.txt` + `opencode.json` + `skills/` + IDA MCP); case chạy trực tiếp trên VM (ADR-009).

@@ -1,0 +1,1 @@
+{"nodes":[{"id":1,"hitCount":0,"callFrame":{"functionName":"(root)","lineNumber":-1,"columnNumber":-1,"scriptId":0,"url":""},"children":[2]},{"id":2,"hitCount":0,"callFrame":{"functionName":"","lineNumber":-1,"columnNumber":-1,"scriptId":11,"url":"fuzzcode.js"}}],"startTime":1798059412,"endTime":1798068953,"samples":[2],"timeDeltas":[9387]}
