@@ -168,3 +168,29 @@ def test_diffopt_flaky_output_filtered(monkeypatch, tmp_path: Path) -> None:
     )
     s = diffopt.run_diffopt(limit=1, axes=[("no-opt", ["--no-opt"])])
     assert s["diffs"] == 0
+
+
+def test_normalize_trace_frames() -> None:
+    """console.trace(): tên frame + số frame khác theo tier → collapse."""
+    a = (
+        "rc=0\n\n==== JS stack trace =========================================\n\n"
+        "    0: BuiltinExitFrame [builtin: ConsoleTrace] trace(this=0x1)\n"
+        "    1: new constructor(aka F15) [0x2] [x.js:15] [bytecode=0x3 offset=30](this=0x4)\n"
+        "    2: ConstructFrame [pc: 0x5]\n"
+        "    3: /* anonymous */ [0x6] [x.js:~1] [pc=0x7](this=0x8)\n"
+        "    4: InternalFrame [pc: 0x9]\n"
+        "    5: EntryFrame [pc: 0xa]\n"
+        "=====================\n"
+    )
+    b = (
+        "rc=0\n\n==== JS stack trace =========================================\n\n"
+        "    0: BuiltinExitFrame [builtin: ConsoleTrace] trace(this=0x1)\n"
+        "    1: new constructor(aka F15) [0x2] [x.js:15] [bytecode=0x3 offset=30](this=0x4)\n"
+        "    2: FastConstructFrame [pc: 0x5]\n"
+        "    3: StubFrame [pc: 0xb]\n"
+        "    4: /* anonymous */ [0x6] [x.js:17] [pc=0x7](this=0x8)\n"
+        "    5: InternalFrame [pc: 0x9]\n"
+        "    6: EntryFrame [pc: 0xa]\n"
+        "=====================\n"
+    )
+    assert diffopt._normalize(a) == diffopt._normalize(b)

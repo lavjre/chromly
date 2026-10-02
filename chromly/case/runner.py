@@ -404,6 +404,12 @@ def auto_case_tick(threshold: int = AUTO_THRESHOLD) -> str | None:
         flush=True,
     )
     res = run_case(meta["id"])
+    if res.get("status") == "budget-deny":
+        # không để husk BUNDLED vĩnh viễn: DENIED (terminal) → nén vào _archive
+        with contextlib.suppress(Exception):
+            pipeline.set_state(meta["id"], "DENIED")
+            pipeline.archive_case(meta["id"])
+        print(f"[auto] {meta['id']} budget-deny → archived", flush=True)
     print(
         f"[auto] {meta['id']} → {res.get('status')} verdict={res.get('verdict')}",
         flush=True,

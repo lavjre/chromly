@@ -38,6 +38,9 @@ _ADDR_RE = re.compile(r"0x[0-9a-fA-F]+")
 _CARET_RE = re.compile(r"^\s*\^+\s*$")
 _FRAME_RE = re.compile(r"^\s+at .*$")
 _ERR_HEAD_RE = re.compile(r"^(\S+):(\d+): (\w*Error(?: \[[^\]]+\])?): ")
+# Frame của `console.trace()` / "==== JS stack trace ====": tên frame + vị trí khác nhau
+# theo tier JIT (ConstructFrame vs FastConstructFrame/StubFrame, `:~1` vs `:17`) — FP #6.
+_TRACE_FRAME_RE = re.compile(r"^\s*\d+:\s.*(?:\[pc[=:]|\[bytecode=|\bFrame\b)")
 OOM_MARKERS = (
     "Fatal JavaScript out of memory",
     "CALL_AND_RETRY_LAST",
@@ -119,6 +122,8 @@ def _normalize(out: str) -> str:
                 keep.pop()  # dòng snippet ngay trước caret
             continue
         if _FRAME_RE.match(line):
+            continue
+        if _TRACE_FRAME_RE.match(line):
             continue
         keep.append(_ERR_HEAD_RE.sub(r"\1:N: \3: ", line))
     return _dedupe_blocks("\n".join(keep))

@@ -388,3 +388,20 @@ def test_mark_crash_fp(monkeypatch, tmp_path: Path) -> None:
     st = con.execute("SELECT state FROM crashes WHERE hash = ?", ("b" * 64,)).fetchone()["state"]
     con.close()
     assert st == "fp"
+
+
+def test_auto_case_budget_deny_archives(monkeypatch, tmp_path: Path) -> None:
+    """budget-deny → DENIED (terminal) + vào _archive, không để husk BUNDLED."""
+    _setup(monkeypatch, tmp_path)
+    con = db.ensure_db()
+    with con:
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, state) VALUES (?, 'x', 5, 'triaged')",
+            ("c" * 64,),
+        )
+    con.close()
+    monkeypatch.setattr(runner, "run_case", lambda cid, **kw: {"status": "budget-deny"})
+    cid = runner.auto_case_tick()
+    assert cid
+    assert pipeline.load_case(cid)["state"] == "ARCHIVED"
+    assert (pipeline.cases_dir() / "_archive" / f"{cid}.tar.gz").is_file()

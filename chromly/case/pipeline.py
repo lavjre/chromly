@@ -113,7 +113,7 @@ def new_case(crash_hash: str | None = None, source: str = "manual") -> dict:
     return meta
 
 
-TERMINAL_STATES = ("VERDICT", "TIMEOUT", "HELP", "ERROR")
+TERMINAL_STATES = ("VERDICT", "TIMEOUT", "HELP", "ERROR", "DENIED")
 _ARCHIVE_KEEP = (
     "meta.json",
     "VERDICT.md",
