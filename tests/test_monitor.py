@@ -84,3 +84,33 @@ def test_render_info_smoke(monkeypatch, tmp_path: Path) -> None:
     assert any(ln.startswith("INTEL") for ln in lines)
     assert any(ln.startswith("CASES") for ln in lines)
     assert any(ln.startswith("CRASH") for ln in lines)
+
+
+def test_corpus_counts(monkeypatch, tmp_path) -> None:
+    from chromly.fuzz import farm
+    from chromly.telemetry import monitor
+
+    monkeypatch.setattr(farm, "FUZZ_DIR", tmp_path / "fuzz")
+    for sub in ("lfuzz-parser/corpus", "lfuzz-wasm/corpus"):
+        d = tmp_path / "fuzz" / sub
+        d.mkdir(parents=True)
+        (d / "a").write_text("x")
+        (d / "b").write_text("x")
+    fz = tmp_path / "fuzz" / "fuzzilli" / "corpus"
+    fz.mkdir(parents=True)
+    (fz / "p1.js").write_text("x")
+    (fz / "p1.fzil").write_text("x")  # không tính
+    (fz / "p2.js").write_text("x")
+    monkeypatch.setattr(monitor, "_CORPUS_CACHE", {})
+    rows = dict(monitor._corpus_counts())
+    assert rows == {"lfuzz-parser": 2, "lfuzz-wasm": 2, "fuzzilli": 2}
+    # cache: thêm file nhưng gọi lại trong 60s vẫn số cũ
+    (tmp_path / "fuzz" / "lfuzz-wasm" / "corpus" / "c").write_text("x")
+    assert dict(monitor._corpus_counts())["lfuzz-wasm"] == 2
+
+
+def test_fmt_count() -> None:
+    from chromly.telemetry import monitor
+
+    assert monitor._fmt_count(999) == "999"
+    assert monitor._fmt_count(11_800) == "11.8k"

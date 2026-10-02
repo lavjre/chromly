@@ -42,6 +42,8 @@ SOURCE_COLORS = {
 }
 _RESET = "\x1b[0m"
 
+_CORPUS_CACHE: dict = {}  # {key: FUZZ_DIR, ts, data} — cache 60s cho _corpus_counts
+
 Event = dict  # {"ts": float, "source": str, "text": str}
 
 
@@ -387,6 +389,37 @@ def _intel_summary() -> dict:
     }
 
 
+def _corpus_counts() -> list[tuple[str, int]]:
+    """Số file corpus mỗi lane (cache 60s theo FUZZ_DIR — tránh quét 40k+ file mỗi 5s)."""
+    from chromly.fuzz import farm
+
+    now = time.time()
+    key = str(farm.FUZZ_DIR)
+    if _CORPUS_CACHE.get("key") == key and now - _CORPUS_CACHE.get("ts", 0) < 60:
+        return _CORPUS_CACHE["data"]
+    rows: list[tuple[str, int]] = []
+    for unit, sub, suffix in (
+        ("lfuzz-parser", "lfuzz-parser/corpus", None),
+        ("lfuzz-wasm", "lfuzz-wasm/corpus", None),
+        ("fuzzilli", "fuzzilli/corpus", ".js"),  # đếm program (.fzil kèm theo không tính)
+    ):
+        n = 0
+        try:
+            with os.scandir(farm.FUZZ_DIR / sub) as it:
+                n = sum(
+                    1 for e in it if e.is_file() and (suffix is None or e.name.endswith(suffix))
+                )
+        except OSError:
+            pass
+        rows.append((unit, n))
+    _CORPUS_CACHE.update({"key": key, "ts": now, "data": rows})
+    return rows
+
+
+def _fmt_count(n: int) -> str:
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+
 def info_snapshot() -> dict:
     from chromly.fuzz import farm
 
@@ -403,6 +436,7 @@ def info_snapshot() -> dict:
         }
     except Exception:  # noqa: BLE001
         snap["farm"] = {}
+    snap["corpus"] = _corpus_counts()
     state = farm._load_state()
     aux = state.get("aux", {})
     alive = sum(1 for rec in aux.values() if farm._alive(rec))
@@ -489,6 +523,10 @@ def render_info(color: bool | None = None) -> str:
         execs = f"{info['execs']:.0f}/s" if isinstance(info.get("execs"), float) else "—"
         farm_parts.append(f"{name} {mark} {execs}")
     lines.append("FARM    " + (" · ".join(farm_parts) or "(trống)"))
+
+    corp = s.get("corpus") or []
+    corp_bits = " · ".join(f"{name} {_fmt_count(n)}" for name, n in corp)
+    lines.append("CORPUS  " + (corp_bits + " file" if corp_bits else "—"))
 
     aux = s["aux"]
     lines.append(f"AUX     {aux['alive']}/{aux['total']} loop sống")

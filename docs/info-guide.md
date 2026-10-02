@@ -27,7 +27,20 @@ AUX     10/10 loop sống
 - **fuzzilli**: ~40–55/s là bình thường trên box này (build dcheck, jobs=6). <10/s hoặc
   0 = xem `store/fuzz/logs/fuzzilli.log` (REPRL chết / kẹt corpus import).
 
-### 1.2 AUX — 10 loop nền
+### 1.2 CORPUS — kích thước corpus
+
+```
+CORPUS  lfuzz-parser 20.8k · lfuzz-wasm 43.1k · fuzzilli 21.5k file
+```
+
+- **lfuzz-***: tổng file trong `corpus/` — phình nhanh là engine bị chậm dần khi reload mỗi cycle
+  (đo thật: wasm 60k file → 112/s; merge còn 6k → 493/s). Hành động: `chromly fuzz engine --merge --unit <u>`
+  (có backup, chạy được khi engine đang chạy).
+- **fuzzilli**: đếm **program** (`.js`; file `.fzil` kèm theo không tính) — chỉ để xem tăng trưởng,
+  không cần merge (fuzzilli tự quản corpus).
+- Số này cache 60s (khỏi quét chục nghìn file mỗi redraw khi chạy `chromly info -w`).
+
+### 1.3 AUX — 10 loop nền
 
 Mỗi dòng: `tên  <dòng cuối log>  (X giây trước)`. `X` = mtime log — càng nhỏ càng mới.
 Nhịp từng loop: watchdog 60s · ingest 15s · metrics 60s · triage 300s · cases 900s ·
@@ -42,20 +55,20 @@ sched 15s · diffopt 540s+120s · review 7200s (agent) · audit 86400s · intel 
 - Loop nào có `X giây trước` quá lớn so với nhịp → đang chạy việc dài (review agent chạy ~2–3')
   hoặc treo (watchdog restart).
 
-### 1.3 INTEL
+### 1.4 INTEL
 
 `pending` commit chờ review · `reviewed` đã review · `variants` số commit đã chạy variant ·
 `lag` độ trễ mirror so với upstream (càng nhỏ càng tốt; **>6h = watcher chậm, nên xem**).
 `KG` = knowledge graph (node/edge).
 
-### 1.4 CASES
+### 1.5 CASES
 
 `running=(không)` hoặc id case đang chạy · `cuối: CASE-XXXX <STATE>`.
 
 Case states: `BUNDLED` (mới tạo) → `RUNNING` (agent đang làm) → `VERDICT` (xong, có kết luận |
 `HELP` (agent cần người) | `TIMEOUT` (quá giờ — sẽ auto-resume ≤8 lần) | `ERROR`.
 
-### 1.5 CRASH
+### 1.6 CRASH
 
 `tổng=N` = số row trong store · `mới: <hash12> <fault_type> s<severity> (<source>)`.
 
@@ -69,14 +82,14 @@ fuzzer-harness −3`. **≥4 → auto-case bắt**; âm/0 = check-only, khó kha
 Sources: `fuzzilli` · `lfuzz-*` (engine) · `variant` · `upstream-regress` (audit) · `diffopt` ·
 `fixture` (test).
 
-### 1.6 BUILD / TOT
+### 1.7 BUILD / TOT
 
 - `BUILD` = 3 record gần nhất: `<config> <status> <Xs>`. status: `ok` / `error` / `killed`
   (bị interrupt) / `running`. `killed 0s` đứng đầu = record cũ đã đóng, không phải lỗi mới.
 - `TOT` = build upstream mới nhất (`ok <sha12> age=Xh`). Dùng `chromly tot verify <repro>`
   để check bug còn sống/unfixed. `age` > vài ngày → chạy lại `chromly tot build`.
 
-### 1.7 BUDGET / DISK
+### 1.8 BUDGET / DISK
 
 `day $X · tier=flash` — chi phí LLM hôm nay + tier model case đang dùng (budget chọn theo ngày).
 `DISK XG free · alerts(unacked)=N` — dung lượng + alert telemetry chưa xác nhận.
@@ -118,4 +131,4 @@ Nguồn gộp: `store/fuzz/events.jsonl` (watchdog/farm) · `store/logs/plugin-e
 | Có candidate 0day? | CRASH `s≥4` + source `variant`/`upstream-regress` → `chromly tot verify` |
 | Hệ khỏe không? | AUX 10/10 + số giây vừa nhịp + BUDGET trong hạn + DISK dư |
 | Vì sao không có case chạy? | `cases: 0 candidate` = không crash nào đủ điểm + chưa có case (bình thường) |
-| Fuzz chậm? | lfuzz tụt → `engine --merge`; fuzzilli tụt → xem log |
+| Fuzz chậm dần? | CORPUS phình → `chromly fuzz engine --merge --unit <u>`; fuzzilli tụt → xem log |
