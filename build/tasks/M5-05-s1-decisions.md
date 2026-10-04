@@ -38,3 +38,27 @@ nhanh cho câu hỏi *crash này có substrate không / nên làm gì tiếp*. J
 path/address; server tốn ~2.3GB RSS khi resident.
 **Files:** `chromly/s1/decide.py`, `chromly/cli/app.py`, `chromly/orchestrator/supervisor.py`,
 `tests/test_s1.py`, `pyproject.toml` (extra `s1`).
+
+---
+
+## M5-05b — fine-tune trên data chromly (2026-10-04)
+
+**Status:** implemented — training đang chạy (2 epoch, CPU); eval khi xong.
+**Deliverable:**
+- `chromly/s1/dataset.py` — **14 item defensible**: 9 từ crash store (nhãn: case verdict CASE-0005/
+  0010/0004 + M5-03) + 5 từ calibration (`bugs.json` + M5-03). State **không chứa nhãn pipeline**
+  (chống rò; heuristic fault_label chính là thứ cần vượt). Loại 2 mục không hợp lệ:
+  `calib-wasm-2338fbb0` (arch-locked), `calib-539984773` (revert drift, no-crash). Ghi
+  `store/s1/dataset.jsonl`; phân bố: kind 7 lớp (check-abort×6, miscompile×2, test-api×2, …),
+  impact none×6/dos×8.
+- `chromly/s1/finetune.py` — build `train_items.pt` (format laya: `build_sequence` + soft target
+  0.9/0.1; train `kind`+`impact` — `ladder`/`exploitable`/`next` hiện toàn hằng trong data nên
+  chưa train) → gọi script vendored `third_party/laya-finetune/finetune_cpu.py --device cpu`.
+  Holdout: 3 item (`94a4430f`, `3963f3ad`, `4a0da5f5`) — 11 item train → 21 quyết định.
+- `chromly/s1/eval.py` — `eval-ft`: load checkpoint local (`laya.load`) + so base qua server.
+**CLI:** `chromly s1 dataset [--write]` · `chromly s1 finetune --epochs N [--holdout ...]` ·
+`chromly s1 eval-ft`.
+**Lưu ý:** dataset còn nhỏ (14 item) — eval holdout chỉ là sanity, không phải bằng chứng tổng quát;
+dataset tự lớn khi crash store + verdict mới (chạy lại `s1 dataset`). **Nhớ: pipeline agent vẫn
+dùng model deepseek 4.1 như setup hiện tại; S1 (laya) là lớp quyết định riêng.**
+**Files:** `chromly/s1/{dataset,finetune,eval}.py`, `third_party/laya-finetune/*`, `tests/test_s1.py`.

@@ -291,6 +291,8 @@ def run_s1_cmd(args) -> int:
         env = dict(os.environ)
         env.setdefault("LAYA_PORT", S1_PORT)
         env.setdefault("LAYA_MODELS", "english")
+        # trả checkpoint về OS khi idle — box 15GB dùng chung farm/train (bài học oomd 04/10)
+        env.setdefault("LAYA_IDLE_UNLOAD_SECONDS", "900")
         import subprocess
 
         return subprocess.call([str(binp)], env=env)

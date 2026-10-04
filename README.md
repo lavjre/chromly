@@ -21,6 +21,7 @@ chromly fuzz lfuzz --unit lfuzz-<target> --once   # mutation 1 cycle cho bất k
 chromly fuzz engine --merge --unit lfuzz-parser   # tối giản corpus định kỳ (giữ backup)
 chromly tot build · status · verify <crash|file>  # build ToT + check "còn sống" (unfixed)
 chromly s1 serve · check · triage <hash>          # System One (laya) — chấm crash (advisory)
+chromly s1 dataset · finetune · eval-ft          # fine-tune S1 trên data chromly (M5-05b)
 chromly info -w · chromly trace -f                # monitor + trace
 ```
 
