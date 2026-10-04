@@ -132,11 +132,9 @@ def _restart(state: dict, name: str, rec: dict, reason: str, now: float) -> dict
     hist = [t for t in rec.get("restarts", []) if now - t < CRASH_LOOP_WINDOW]
     hist.append(now)
     if len(hist) >= CRASH_LOOP_N:
-        rec["degraded"] = True
-        rec["degraded_at"] = now
-        rec["restarts"] = hist
-        state["units"][name] = rec
-        farm._save_state(state)
+        farm.merge_unit_fields(
+            name, {"degraded": True, "degraded_at": now, "restarts": hist}
+        )
         append_event("degraded", name, {"restarts": len(hist)})
         return {"unit": name, "action": "degraded", "reason": reason}
 
@@ -167,10 +165,7 @@ def _restart(state: dict, name: str, rec: dict, reason: str, now: float) -> dict
         # (record rỗng làm tick sau KeyError chết watchdog)
         append_event("restart-failed", name, {"reason": reason})
         return {"unit": name, "action": "restart-failed", "reason": reason}
-    rec2["restarts"] = hist
-    rec2["degraded"] = False
-    state2["units"][name] = rec2
-    farm._save_state(state2)
+    farm.merge_unit_fields(name, {"restarts": hist, "degraded": False})
     append_event("restart", name, {"reason": reason})
     return {"unit": name, "action": "restarted", "reason": reason}
 
@@ -185,8 +180,10 @@ def _aux_check(state: dict) -> list[dict]:
         if name == "watchdog":
             continue
         if not farm._alive(rec):
-            aux[name] = supervisor._spawn_aux(name)
-            append_event("aux-restart", name, {"pid": aux[name]["pid"]})
+            new_rec = supervisor._spawn_aux(name)
+            aux[name] = new_rec
+            farm.merge_aux_record(name, new_rec)
+            append_event("aux-restart", name, {"pid": new_rec["pid"]})
             actions.append({"unit": f"aux:{name}", "action": "restarted", "reason": "dead"})
     return actions
 
@@ -254,23 +251,16 @@ def tick(now: float | None = None, hang_s: float | None = None) -> list[dict]:
         unit_hang = HANG_BY_UNIT.get(name, hang_s)
         if _fresh_activity(rec, now, min(FRESH_LOG_S, unit_hang)):
             # còn hoạt động (log/stats mới) → reset baseline, không tính là hang
-            rec["watchdog"] = {"ticks": ticks, "ts": now}
-            state["units"][name] = rec
-            farm._save_state(state)
+            farm.merge_unit_fields(name, {"watchdog": {"ticks": ticks, "ts": now}})
             continue
         if "ticks" in prev and ticks <= prev["ticks"] and now - prev["ts"] >= unit_hang:
             actions.append(_restart(state, name, rec, "hang", now))
             state = farm._load_state()
             continue
         if "ticks" not in prev or ticks > prev["ticks"]:
-            rec["watchdog"] = {"ticks": ticks, "ts": now}
-            state["units"][name] = rec
-            farm._save_state(state)  # lưu ngay — tránh clobber state của restart sau này
+            farm.merge_unit_fields(name, {"watchdog": {"ticks": ticks, "ts": now}})
 
-    aux_actions = _aux_check(state)
-    if aux_actions:
-        farm._save_state(state)
-    actions.extend(aux_actions)
+    actions.extend(_aux_check(state))
     actions.extend(_case_stale_check(now))
     return actions
 

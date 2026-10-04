@@ -62,9 +62,10 @@ def up_all() -> dict:
         if rec and farm._alive(rec):
             res[name] = "already-running"
             continue
-        aux[name] = _spawn_aux(name)
-        res[name] = f"started pid={aux[name]['pid']}"
-    farm._save_state(state)
+        new_rec = _spawn_aux(name)
+        aux[name] = new_rec
+        farm.merge_aux_record(name, new_rec)
+        res[name] = f"started pid={new_rec['pid']}"
     return res
 
 
@@ -90,11 +91,11 @@ def down_all() -> dict:
     res = {"farm": farm.down()}
     state = farm._load_state()
     aux = state.get("aux", {})
+    killed = []
     for name, rec in list(aux.items()):
         res[name] = _kill_rec(rec)
-        aux.pop(name, None)
-    state["aux"] = aux
-    farm._save_state(state)
+        killed.append(name)
+    farm.prune_aux(killed)
     return res
 
 

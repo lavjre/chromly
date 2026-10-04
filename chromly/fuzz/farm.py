@@ -10,6 +10,7 @@ Format log fuzzilli (`Execs/second`) + libFuzzer (`exec/s:`) — parser tolerant
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import json
 import os
 import re
@@ -154,9 +155,30 @@ def _load_state() -> dict:
     return {"units": {}}
 
 
+def state_lock():
+    """Khoá liên-tiến-trình cho read-modify-write state.json (watchdog/up/down/lanes)."""
+    import contextlib as _ctx
+
+    class _L:
+        def __enter__(self):
+            STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            self.fh = (STATE_PATH.with_suffix(".lock")).open("a")
+            fcntl.flock(self.fh, fcntl.LOCK_EX)
+            return self
+
+        def __exit__(self, *exc):
+            fcntl.flock(self.fh, fcntl.LOCK_UN)
+            self.fh.close()
+            return False
+
+    return _ctx.nullcontext() if False else _L()
+
+
 def _save_state(state: dict) -> None:
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    STATE_PATH.write_text(json.dumps(state, indent=2))
+    tmp = STATE_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(state, indent=2))
+    tmp.replace(STATE_PATH)
 
 
 def _alive(rec: dict) -> bool:
@@ -185,6 +207,42 @@ def _rss_mb(pid: int) -> int | None:
     except OSError:
         return None
     return None
+
+
+def merge_unit_fields(name: str, fields: dict) -> bool:
+    """Ghi vài field vào 1 unit record theo kiểu re-load + merge (an toàn đa tiến trình)."""
+    with state_lock():
+        st = _load_state()
+        rec = st["units"].get(name)
+        if rec is None:
+            return False
+        rec.update(fields)
+        st["units"][name] = rec
+        _save_state(st)
+    return True
+
+
+def upsert_unit_record(name: str, rec: dict) -> None:
+    """Ghi lại record cho unit đang chạy dù record đã bị clobber (re-assert của rotator)."""
+    with state_lock():
+        st = _load_state()
+        st["units"][name] = rec
+        _save_state(st)
+
+
+def merge_aux_record(name: str, rec: dict) -> None:
+    with state_lock():
+        st = _load_state()
+        st.setdefault("aux", {})[name] = rec
+        _save_state(st)
+
+
+def prune_aux(names: list[str]) -> None:
+    with state_lock():
+        st = _load_state()
+        for n in names:
+            st.get("aux", {}).pop(n, None)
+        _save_state(st)
 
 
 def latest_stats_execs(storage: Path) -> float | None:
@@ -216,6 +274,11 @@ def parse_execs(log: Path) -> float | None:
 
 
 def up(units: list[Unit] | None = None) -> dict:
+    with state_lock():
+        return _up_locked(units)
+
+
+def _up_locked(units: list[Unit] | None = None) -> dict:
     FUZZ_DIR.mkdir(parents=True, exist_ok=True)
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     state = _load_state()
@@ -260,6 +323,11 @@ def up(units: list[Unit] | None = None) -> dict:
 
 
 def down(names: list[str] | None = None, grace: float = 30.0) -> dict:
+    with state_lock():
+        return _down_locked(names, grace)
+
+
+def _down_locked(names: list[str] | None = None, grace: float = 30.0) -> dict:
     state = _load_state()
     targets = names or list(state["units"].keys())
     stopped: dict = {}

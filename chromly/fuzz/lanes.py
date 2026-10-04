@@ -12,6 +12,7 @@ Tương thích watchdog: `farm.down` xoá record trước khi kill → watchdog 
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 
@@ -57,6 +58,24 @@ def _save(st: dict) -> None:
     p.write_text(json.dumps(st, ensure_ascii=False, indent=2))
 
 
+def _pid_alive(pid: int) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:
+        from pathlib import Path as _P
+
+        cmd = _P(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+    except OSError:
+        return False
+    return "lfuzz" in cmd
+
+
 def lane_unit(target: str) -> farm.Unit:
     """Unit cho 1 target bất kỳ (như farm.engine_units nhưng theo tên engine.unit_for)."""
     name = engine.unit_for(target)
@@ -80,6 +99,22 @@ def tick(
     for unit, info in list(st["lanes"].items()):
         rec = units.get(unit)
         if rec is None:
+            # record bị clobber (race) nhưng process còn sống → re-assert record
+            pid = int(info.get("pid") or 0)
+            if _pid_alive(pid):
+                unit_obj = lane_unit(str(info.get("target")))
+                farm.upsert_unit_record(
+                    unit,
+                    {
+                        "pid": pid,
+                        "started": info.get("started"),
+                        "cmd": unit_obj.cmd,
+                        "log": str(unit_obj.log),
+                        "type": "libfuzzer",
+                    },
+                )
+                actions.append({"unit": unit, "action": "reassert"})
+                continue
             st["lanes"].pop(unit)
             actions.append({"unit": unit, "action": "gone"})
             continue
@@ -115,7 +150,7 @@ def tick(
             actions.append({"unit": unit, "action": "built", "wall_s": res.get("wall_s")})
         res = farm.up([lane_unit(target)])
         if res.get(unit, {}).get("status") in ("started", "already-running"):
-            st["lanes"][unit] = {"target": target, "started": now}
+            st["lanes"][unit] = {"target": target, "started": now, "pid": res[unit].get("pid")}
             actions.append({"unit": unit, "action": "rotate-in", "target": target})
         else:
             actions.append({"unit": unit, "action": "up-fail", "detail": res.get(unit)})
