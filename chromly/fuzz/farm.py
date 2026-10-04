@@ -406,6 +406,10 @@ def run_fuzz_cmd(args) -> int:
         from chromly.fuzz.engine import run_lfuzz_cmd
 
         return run_lfuzz_cmd(args)
+    if cmd == "lanes":
+        from chromly.fuzz.lanes import run_lanes_cmd
+
+        return run_lanes_cmd(args)
     if cmd == "lfreplay":
         from chromly.fuzz.replay import run_lfreplay
 

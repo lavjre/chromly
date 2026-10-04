@@ -124,6 +124,11 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         help="chỉ build target này, vd parser|wasm_module|regexp (mặc định: 2 lane chính)",
     )
+    p_ln = fuzz_sub.add_parser("lanes", help="xoay lane per-target harness (full 16 engine)")
+    p_ln.add_argument("--loop", action="store_true", help="chạy mãi (aux supervisor)")
+    p_ln.add_argument("--interval", type=float, default=600.0, help="giây giữa 2 nhịp")
+    p_ln.add_argument("--keep", type=int, default=2, help="số lane phụ chạy song song")
+    p_ln.add_argument("--slice", type=float, default=7200.0, help="giây mỗi lane trước khi xoay")
     p_lz = fuzz_sub.add_parser("lfuzz", help="engine loop: mutation + coverage (M1-08)")
     p_lz.add_argument(
         "--unit",
