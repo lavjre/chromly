@@ -87,6 +87,23 @@ def ask(state: str | dict, questions: dict) -> dict:
 # ── crash triage ─────────────────────────────────────────────────────────────
 
 CRASH_QUESTIONS = {
+    "kind": {
+        "type": "choice",
+        "instructions": "What kind of failure does this crash output show?",
+        "criteria": {
+            "check-abort": "a debug check or assertion aborted the process (DCHECK/CHECK/FATAL)",
+            "oob-read": "out-of-bounds memory read",
+            "oob-write": "out-of-bounds memory write",
+            "use-after-free": "use of freed or stale memory",
+            "type-confusion": "an object treated as another type",
+            "miscompile": "the engine computed wrong code or wrong results",
+            "stack-overflow": "call stack exhausted",
+            "out-of-memory": "memory limit hit",
+            "test-api-misuse": "test-only intrinsics or unsafe developer flags misused",
+            "false-positive": "not a real engine bug (harness artifact, flag conflict)",
+            "other": "none of the above",
+        },
+    },
     "exploitable": {
         "type": "noul",
         "instructions": (
@@ -157,8 +174,12 @@ def _head(path: Path, n: int) -> str:
     return "\n".join(out)
 
 
-def build_crash_state(hash_or_prefix: str) -> tuple[str, Path]:
-    """Text state cho S1 từ crash store (không cần model). Trả (state, crash_dir)."""
+def build_crash_state(hash_or_prefix: str, include_pipeline_label: bool = True) -> tuple[str, Path]:
+    """Text state cho S1 từ crash store (không cần model). Trả (state, crash_dir).
+
+    `include_pipeline_label=False`: bỏ fault_label (rò nhãn khi train — heuristic chính là
+    thứ S1 cần vượt qua, không phải để copy).
+    """
     crashes = paths.STORE_DIR / "crashes"
     d = next((p for p in sorted(crashes.iterdir()) if p.name.startswith(hash_or_prefix)), None)
     if d is None or not d.is_dir():
@@ -192,9 +213,10 @@ def build_crash_state(hash_or_prefix: str) -> tuple[str, Path]:
 
     parts = [
         "# V8 crash under triage (d8, snapshot build)",
-        f"fault_label_from_pipeline: {(fault or 'unknown')}{severity}",
-        f"source: {meta.get('unit') or meta.get('source') or 'unknown'}",
     ]
+    if include_pipeline_label:
+        parts.append(f"fault_label_from_pipeline: {(fault or 'unknown')}{severity}")
+    parts.append(f"source: {meta.get('unit') or meta.get('source') or 'unknown'}")
     if flags:
         parts.append(f"repro_flags: {flags}")
     crash_txt = _head(tri / "asan.txt", _STACK_MAX_LINES)
@@ -305,5 +327,17 @@ def run_s1_cmd(args) -> int:
             f"({out['elapsed_ms']}ms)"
         )
         return 0
-    print("usage: chromly s1 {serve|check|triage <hash>}")
+    if sub == "dataset":
+        from chromly.s1.dataset import run_dataset_cmd
+
+        return run_dataset_cmd(args)
+    if sub == "finetune":
+        from chromly.s1.finetune import run_finetune_cmd
+
+        return run_finetune_cmd(args)
+    if sub == "eval-ft":
+        from chromly.s1.eval import run_eval_cmd
+
+        return run_eval_cmd(args)
+    print("usage: chromly s1 {serve|check|triage <hash>|dataset|finetune|eval-ft}")
     return 2

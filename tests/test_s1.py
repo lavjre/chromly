@@ -130,3 +130,43 @@ def test_check_needs_server(monkeypatch, capsys) -> None:
     args = type("A", (), {"s1_cmd": "check"})()
     assert decide.run_s1_cmd(args) == 1
     assert "không sống" in capsys.readouterr().out
+
+
+def test_calib_state_strips_comments() -> None:
+    from chromly.s1 import dataset as ds
+
+    state = ds._calib_state(
+        {
+            "repro_js": "// comment lộ tên bug\nfunction f() { return 1; }\n",
+            "repro_flags": ["--turbolev"],
+        }
+    )
+    assert "comment lộ tên bug" not in state
+    assert "--turbolev" in state
+    assert "function f()" in state
+
+
+def test_dataset_stats() -> None:
+    from chromly.s1 import dataset as ds
+
+    items = [
+        {"id": "a", "labels": {"kind": "check-abort", "impact": "dos"}},
+        {"id": "b", "labels": {"kind": "check-abort", "impact": "none"}},
+        {"id": "c", "labels": {"kind": "miscompile", "impact": "none"}},
+    ]
+    st = ds.stats(items)
+    assert st["n"] == 3
+    assert st["counts"]["kind"]["check-abort"] == 2
+    assert st["counts"]["impact"]["none"] == 2
+
+
+def test_hf_snapshot_missing(tmp_path: Path, monkeypatch) -> None:
+    from chromly.s1 import finetune
+
+    monkeypatch.setattr(finetune, "HF_HUB", tmp_path / "hub")
+    try:
+        finetune.hf_snapshot()
+    except RuntimeError:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("phải raise RuntimeError khi thiếu snapshot")
