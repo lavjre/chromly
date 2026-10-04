@@ -21,11 +21,14 @@ wasm_compile_simd  wasm_compile_wasmgc  wasm_deopt  wasm_init_expr
 wasm_module  wasm_streaming
 ```
 Bật bất kỳ: `chromly fuzz engine --build --fuzzer <t>` → `chromly fuzz lfuzz --unit lfuzz-<t>`.
-Chưa có lane farm cho: inspector (CDP), json, multi_return, wasm_code/async/streaming/compile_all/revec/simd/wasmgc/deopt/init_expr, regexp (engine đã build 1 lần, chạy tay được).
+**16/16 engine binary build xong (04/10)**; **lane rotator** (`chromly fuzz lanes`, aux `lanes`) giữ
+2 lane phụ xoay vòng qua 14 target còn lại (slice 2h/target) → toàn bộ harness đều được chạy theo thời gian,
+không vượt ngân sách CPU của box.
 
 ## 3. Fuzzilli profiles khác (○ — đổi 1 cờ)
 
-`v8` (● đang chạy) · `v8Sandbox` (sandbox escape) · `v8Dumpling` (so frame Maglev vs Turbofan) · `v8holefuzzing` (in-object holes).
+`v8` (● đang chạy) · `v8Sandbox` / `v8Dumpling` / `v8holefuzzing` — cần **build d8 riêng từng profile**
+(xem `build/tasks/M1-10-fuzzilli-extra-profiles.md`, đã thử và có bằng chứng fail cụ thể).
 (Các engine khác — jsc, spidermonkey, … — không thuộc target.)
 
 ## 4. Surfaces có bug tái hiện được trên x64 (calibration, ● verified)

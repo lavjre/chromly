@@ -119,6 +119,7 @@ flowchart TD
 | `lfuzz-parser` | libFuzzer engine, parse V8 (M1-08) | `store/fuzz/lfuzz-parser/artifacts/` |
 | `lfuzz-wasm` | libFuzzer engine, wasm module | `store/fuzz/lfuzz-wasm/artifacts/` |
 | `diffopt` lane | differential JIT: default vs `no-opt/no-sparkplug/no-maglev/deopt-100` | crash store (`source=diffopt`) |
+| `lanes` rotator | xoay 2 lane engine phụ qua **14 target còn lại** (regexp, json, inspector, wasm_*...) — phủ dần toàn bộ 16 harness | crash store (per-unit artifacts) |
 
 - **ingest (15s)**: quét mọi nguồn trên → `store/crashes/<sha256>/` + DB (`state=raw`). Dedup theo hash.
 - **triage (300s)**: raw → chạy repro ×5 trên `out/asan` → `classify` (fault_type) + `score`
@@ -176,7 +177,8 @@ Severity ≥4 → auto-case bắt. Source: `fuzzilli · lfuzz-* · diffopt · va
 - **System slice**: farm + aux chạy dưới `chromly-supervisor.service` (systemd) — miễn nhiễm
   oomd user-slice (bài học 04/10: oomd kill cả scope terminal 35 process).
 - **Aux loops (11)**: watchdog 60s · ingest 15s · metrics 60s · sched 60s · triage 300s ·
-  cases 900s · diffopt 540s+120s · review 2h · audit 24h · intel ~1h · s1 serve (thường trú).
+  cases 900s · diffopt 540s+120s · review 2h · audit 24h · intel ~1h · s1 serve (thường trú) ·
+  lanes 600s (xoay engine lane: keep=2, slice=2h/target).
 - **watchdog**: hang (CPU ticks đứng) / dead → kill+restart; crash-loop → degraded 30' rồi tự hồi;
   aux chết → respawn; case RUNNING quá hạn → TIMEOUT.
 - **monitor**: `chromly info [-w]` (FARM · CORPUS · AUX · INTEL · CASES · CRASH · BUILD · TOT ·
@@ -201,6 +203,7 @@ diffopt ──► miscompile candidate ─────────────�
 ```bash
 chromly up / down / info -w / trace -f          # vận hành + giám sát
 chromly fuzz status | engine --list | engine --merge --unit <u> | lfuzz --unit <u> --once
+chromly fuzz lanes [--keep 2 --slice 7200]             # xoay lane per-target (16 harness)
 chromly triage list                              # crash + score + state
 chromly case list                                # case + state
 chromly tot build | status | verify <crash>      # unfixed check trên ToT
