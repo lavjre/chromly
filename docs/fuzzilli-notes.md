@@ -32,3 +32,15 @@ export PATH="$HOME/.local/share/swiftly/bin:$PATH"
 - Crash rơi vào `storagePath/crashes/`: mỗi crash = **cặp `.js` (lift JS, ghi TRƯỚC) + `.fzil` (protobuf, ghi SAU)** — nguồn: `Storage.swift::storeProgram` (không phụ thuộc cờ); crash store (M1-05) nhập `.fzil` canonical + `.js` sidecar, và nhập `.js` mồ côi nếu fuzzilli thoát giữa chừng (chỉ có .js).
 - `--exportStatistics` ghi stats định kỳ vào storage — nguồn metrics v0 (M1-07).
 - Multi-machine (sau này): instance tree `root`/`leaf` + `--bindTo`/`--connectTo` (`--corpusSyncMode`).
+
+## Sự cố & bài học (2026-10-04)
+
+- **Crash-loop "Corpus import aborted"**: nếu import abort lặp lại nhiều lần (mỗi restart lại abort),
+  kiểm tra `storagePath/old_corpus` **đã tồn tại** chưa — fuzzilli rename corpus→old_corpus khi abort,
+  gặp dir đích đã có là kẹt vòng. Fix: tự tay `mv corpus corpus.bad-<ts>; mv old_corpus old_corpus.bad-<ts>`
+  rồi để watchdog restart (fuzzilli sinh corpus mới; corpus cũ giữ lại để mổ sau).
+- **SIGKILL fuzzilli giữa chừng** có thể để lại `.fzil` viết dở trong corpus → lần resume sau đó import
+  abort. Ưu tiên `farm.down()` (SIGTERM + grace) hơn kill -9 khi cần restart fuzzilli.
+- **state.json race**: nhiều process (watchdog/up/down/lanes) cùng read-modify-write → record bị clobber.
+  Đã vá: flock + merge-write (farm.state_lock, merge_unit_fields/merge_aux_record) + rotator re-assert
+  record khi process còn sống mà record mất. Watchdog cũ cần restart 1 lần để nạp bản mới.
