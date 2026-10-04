@@ -114,3 +114,48 @@ def test_fmt_count() -> None:
 
     assert monitor._fmt_count(999) == "999"
     assert monitor._fmt_count(11_800) == "11.8k"
+
+
+def test_bar_and_fmt_dur() -> None:
+    from chromly.telemetry import monitor
+
+    assert monitor._bar(0.5, 10) == "█████░░░░░"
+    assert monitor._bar(1.0) == "█" * 10
+    assert monitor._bar(None) == "░" * 10
+    assert monitor._fmt_dur(125) == "2m"
+    assert monitor._fmt_dur(3720) == "1h02"
+
+
+def test_render_info_s1_section(monkeypatch) -> None:
+    from chromly.telemetry import monitor
+
+    snap = {
+        "ts": 0.0,
+        "farm": {},
+        "corpus": [],
+        "aux": {"alive": 0, "total": 0, "last": []},
+        "intel": {"pending": 0, "reviewed": 0, "variants": 0, "kg_n": 0, "kg_e": 0, "lag": None},
+        "cases": {"running": [], "last": None},
+        "crash_last": [],
+        "crash_total": 0,
+        "builds": [],
+        "budget": {"day": 0.0, "tier": "?"},
+        "disk_free_gb": 1,
+        "alerts": 0,
+        "events": [],
+        "s1": [
+            {
+                "hash": "ab" * 32,
+                "exploitable": 0.8,
+                "ladder": 0.2,
+                "impact": "dos",
+                "next": "close",
+                "elapsed_ms": 9,
+            }
+        ],
+    }
+    monkeypatch.setattr(monitor, "info_snapshot", lambda: snap)
+    out = monitor.render_info(color=False)
+    assert "S1      System One" in out
+    assert "████████░░ 0.80" in out
+    assert "impact=dos" in out

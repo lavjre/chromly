@@ -162,6 +162,8 @@ def run_test(d8: Path, test: Path) -> dict:
         outcome = "fp-manual-opt"  # %Optimize* thiếu prepare — lỗi generator (FP filter)
     elif MISSING_FLAG_RE.search(full) and rc in (0, 1):
         outcome = "skipped"  # thiếu flag không tự thêm được — không tính là pass
+    elif rc is None:
+        outcome = "timeout"  # TimeoutExpired → rc=None (trước rơi vào rc<0 → TypeError)
     elif rc in CRASH_CODES or rc < 0:
         outcome = "crash"
     elif rc != 0 or "Uncaught" in output or "uncaught" in output:

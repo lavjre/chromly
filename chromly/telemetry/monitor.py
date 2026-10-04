@@ -420,6 +420,44 @@ def _fmt_count(n: int) -> str:
     return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
 
 
+def _bar(v: float, width: int = 10) -> str:
+    """Thanh xác suất kiểu System-One: █ đầy / ░ trống."""
+    try:
+        x = max(0.0, min(1.0, float(v)))
+    except (TypeError, ValueError):
+        return "░" * width
+    n = round(x * width)
+    return "█" * n + "░" * (width - n)
+
+
+def _fmt_dur(sec: float | None) -> str:
+    if not isinstance(sec, (int, float)) or sec < 0:
+        return "—"
+    t = int(sec)
+    if t < 3600:
+        return f"{t // 60}m"
+    if t < 86400:
+        return f"{t // 3600}h{(t % 3600) // 60:02d}"
+    return f"{t // 86400}d"
+
+
+def _s1_results(limit: int = 3) -> list[dict]:
+    """Decision gần nhất từ store/s1/*.json (System One / JEV-style)."""
+    d = paths.STORE_DIR / "s1"
+    if not d.is_dir():
+        return []
+    files = sorted(d.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True)[:limit]
+    out: list[dict] = []
+    for f in files:
+        try:
+            r = json.loads(f.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(r, dict) and r.get("hash"):
+            out.append(r)
+    return out
+
+
 def info_snapshot() -> dict:
     from chromly.fuzz import farm
 
@@ -431,12 +469,15 @@ def info_snapshot() -> dict:
                 "alive": info["alive"],
                 "execs": info.get("execs_per_sec"),
                 "uptime_s": info.get("uptime_s"),
+                "rss_mb": info.get("rss_mb"),
+                "type": info.get("type"),
             }
             for name, info in st.items()
         }
     except Exception:  # noqa: BLE001
         snap["farm"] = {}
     snap["corpus"] = _corpus_counts()
+    snap["s1"] = _s1_results()
     state = farm._load_state()
     aux = state.get("aux", {})
     alive = sum(1 for rec in aux.values() if farm._alive(rec))
@@ -517,12 +558,20 @@ def render_info(color: bool | None = None) -> str:
     s = info_snapshot()
     lines = [f"══ chromly info — {time.strftime('%Y-%m-%d %H:%M:%S')} ══"]
 
-    farm_parts = []
-    for name, info in (s.get("farm") or {}).items():
+    farm = s.get("farm") or {}
+    total = sum(x["execs"] for x in farm.values() if isinstance(x.get("execs"), float))
+    lines.append(f"FARM    {len(farm)} unit · ~{total:.0f} exec/s tổng")
+    for name, info in farm.items():
         mark = "●" if info["alive"] else "✗"
         execs = f"{info['execs']:.0f}/s" if isinstance(info.get("execs"), float) else "—"
-        farm_parts.append(f"{name} {mark} {execs}")
-    lines.append("FARM    " + (" · ".join(farm_parts) or "(trống)"))
+        up = _fmt_dur(info.get("uptime_s"))
+        rss = f"{info['rss_mb']}MB" if info.get("rss_mb") else "—"
+        extra = (
+            "  ⟨rotate⟩"
+            if name.startswith("lfuzz-") and name not in ("lfuzz-parser", "lfuzz-wasm")
+            else ""
+        )
+        lines.append(f"  {name:<18} {mark} {execs:>8}  ↑{up:<5} {rss:>6}{extra}")
 
     corp = s.get("corpus") or []
     corp_bits = " · ".join(f"{name} {_fmt_count(n)}" for name, n in corp)
@@ -550,6 +599,22 @@ def render_info(color: bool | None = None) -> str:
         for r in s["crash_last"]
     )
     lines.append(f"CRASH   tổng={s['crash_total']} · mới: {crash_bits or '—'}")
+
+    s1 = s.get("s1") or []
+    if s1:
+        lines.append("S1      System One (laya) — chấm crash gần nhất")
+        for r in s1:
+            h = str(r.get("hash", "?"))[:12]
+            expl = r.get("exploitable")
+            lad = r.get("ladder")
+            e = f"{_bar(expl)} {expl:.2f}" if isinstance(expl, (int, float)) else "—"
+            lad_s = f"{_bar(lad)} {lad:.2f}" if isinstance(lad, (int, float)) else "—"
+            lines.append(f"  {h}  exploitable {e}   ladder {lad_s}")
+            lines.append(
+                f"                impact={r.get('impact') or '—'} · next={r.get('next') or '—'} "
+                f"· {r.get('elapsed_ms') or '?'}ms"
+            )
+
     lines.append("BUILD   " + " · ".join(s["builds"] or ["—"]))
     if s.get("tot"):
         lines.append("TOT     " + s["tot"])

@@ -25,6 +25,9 @@ def seen_path() -> Path:
     return farm.FUZZ_DIR / "ingest_seen.json"
 
 
+_FUZZER_ARTIFACT_PREFIXES = ("crash-", "oom-", "leak-", "timeout-")
+
+
 def _sources() -> dict[str, Path]:
     """unit name → dir chứa file crash (chỉ dir tồn tại)."""
     base = farm.FUZZ_DIR
@@ -79,6 +82,10 @@ def ingest_once() -> list[dict]:
                     and f.suffix == ".js"
                     and f.with_suffix(".fzil").is_file()
                 ):
+                    continue
+                # engine/replay: chỉ nhận artifact chuẩn (crash-*/oom-*/leak-*/timeout-*),
+                # bỏ slow-unit-* và sidecar .log (chúng không phải crash)
+                if unit_name != "fuzzilli" and not f.name.startswith(_FUZZER_ARTIFACT_PREFIXES):
                     continue
                 st = f.stat()
                 key = f"{f}:{st.st_size}:{int(st.st_mtime)}"

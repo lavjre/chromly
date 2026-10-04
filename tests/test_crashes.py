@@ -79,3 +79,23 @@ def test_ingest_orphan_js_and_fzil_sidecar(monkeypatch, tmp_path: Path) -> None:
     dest = paths.STORE_DIR / "crashes" / h
     assert (dest / "program_A.fzil").is_file()
     assert (dest / "program_A.js").is_file()  # sidecar được kèm theo
+
+
+def test_ingest_only_standard_artifacts(tmp_path, monkeypatch) -> None:
+    from chromly import paths as P
+    from chromly.fuzz import crashes, farm
+    from chromly.store import db
+
+    monkeypatch.setattr(farm, "FUZZ_DIR", tmp_path / "fuzz")
+    monkeypatch.setattr(P, "STORE_DIR", tmp_path / "store")
+    monkeypatch.setattr(P, "DB_PATH", tmp_path / "store" / "chromly.db")
+    art = tmp_path / "fuzz" / "lfuzz-parser" / "artifacts"
+    art.mkdir(parents=True)
+    (art / "slow-unit-abc123").write_bytes(b"slow")
+    (art / "crash-deadbeef").write_bytes(b"boom")
+    res = crashes.ingest_once()
+    assert len(res) == 1 and res[0]["unit"] == "lfuzz-parser"
+    con = db.ensure_db()
+    n = con.execute("SELECT COUNT(*) AS n FROM crashes").fetchone()["n"]
+    con.close()
+    assert n == 1

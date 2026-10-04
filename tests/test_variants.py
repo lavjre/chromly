@@ -163,3 +163,14 @@ def test_manual_opt_fp_filter(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(variants, "_run_once", fake_run)
     res = variants.run_test(_P("/bin/true"), _P("/tmp/fake.js"))
     assert res["outcome"] == "fp-manual-opt"
+
+
+def test_run_test_timeout_outcome(monkeypatch) -> None:
+    from pathlib import Path as _P
+
+    def fake_run(d8, test, extra):
+        return None, "(timeout)"
+
+    monkeypatch.setattr(variants, "_run_once", fake_run)
+    res = variants.run_test(_P("/bin/true"), _P("/tmp/fake2.js"))
+    assert res["outcome"] == "timeout"
