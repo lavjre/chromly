@@ -5,6 +5,73 @@
 
 ## 0. Sơ đồ tổng
 
+```mermaid
+flowchart TD
+    subgraph TA["Track A — Fuzz 24/7 (no LLM)"]
+        FZ["fuzzilli · jobs=6"]
+        LP["lfuzz-parser (libFuzzer)"]
+        LW["lfuzz-wasm (libFuzzer)"]
+        DO["diffopt lane — 4 axis JIT"]
+    end
+    subgraph TB["Track B — Intel (patch-diff)"]
+        WT["watcher ~1h"]
+        RV["review 2h — agent deepseek 4.1"]
+        VR["variants runner"]
+        AD["audit 24h"]
+    end
+    ING["ingest 15s → crash store + DB (raw)"]
+    TRI["triage 5m — repro ×5 · classify · score"]
+    FLK["flaky — re-check 2h"]
+    RAW["raw — backoff 6h"]
+    SCO{"score ≥ 4 ?"}
+    PARK["triaged (park)"]
+    ATC["auto-case 15m — budget gate — agent (scratch riêng)"]
+    VER{"VERDICT"}
+    FP["crash = fp"]
+    OUT["validated-crash / report-draft"]
+    TMO["TIMEOUT → auto-resume ≤8"]
+    TOT["tot verify — STILL-CRASHES / CLEAN"]
+    FIX["đã fix upstream (n-day)"]
+    LAB["exploit lab — L0 → L1 ladder"]
+    S1["s1 (laya) — kind/exploitable/ladder/next — advisory"]
+    DS["dataset S1 — tự lớn từ verdict + ToT"]
+    subgraph OPS["Ops — system slice · systemd"]
+        SUP["supervisor chromly up/down"]
+        WD["watchdog 60s — hang/dead/degraded"]
+        MON["info · trace · budget · alerts"]
+    end
+
+    FZ -->|crashes .js+.fzil| ING
+    LP -->|artifacts crash-*| ING
+    LW -->|artifacts crash-*| ING
+    DO -->|miscompile-diff / release-crash| ING
+    WT --> RV --> VR -->|crash test_js| ING
+    AD -->|regression test → crash| ING
+
+    ING --> TRI
+    TRI -->|chập chờn| FLK
+    TRI -->|0 repro| RAW
+    TRI -->|ổn định| SCO
+    SCO -->|không| PARK
+    SCO -->|có| ATC
+    ATC --> VER
+    VER -->|no-bug| FP
+    VER -->|validated / report| OUT
+    VER -->|timeout| TMO --> ATC
+    OUT --> TOT
+    TOT -->|CLEAN| FIX
+    TOT -->|STILL-CRASHES| LAB
+    OUT --> DS
+    FP --> DS
+    DS -.->|fine-tune M5-05b| S1
+    S1 -.->|xếp hạng đáng-thử-ladder| ATC
+    WD -.->|kill/restart/degraded| TA
+    WD -.->|kill/restart| TB
+    WD -.->|respawn aux| OPS
+```
+
+**Bản terminal** (cùng nội dung, đọc trong CLI):
+
 ```
                 ┌─────────────────────── Track A: fuzz 24/7 (no LLM) ───────────────────────┐
                 │  fuzzilli (jobs=6)      → crashes/ *.js+.fzil                            │
