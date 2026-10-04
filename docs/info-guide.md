@@ -6,11 +6,19 @@
 ## 1. Bố cục `chromly info`
 
 ```
-══ chromly info — 2026-10-02 15:20:34 ══
-FARM    lfuzz-parser ● 99/s · lfuzz-wasm ● 147/s · fuzzilli ● 45/s
-AUX     10/10 loop sống
-  audit      CRASH  test/mjsunit/.../regress-563068683.js → 216c15a22212  (9277s trước)
+══ chromly info — 2026-10-04 22:38:15 ══
+FARM    5 unit · ~1340 exec/s tổng
+  fuzzilli           ●     91/s  ↑15m     58MB
+  lfuzz-parser       ●     35/s  ↑23m      9MB
+  lfuzz-wasm         ●     39/s  ↑23m      9MB
+  lfuzz-wasm_async   ●    993/s  ↑9m      21MB  ⟨rotate⟩
+  lfuzz-wasm_code    ●    182/s  ↑9m      21MB  ⟨rotate⟩
+AUX     12/12 loop sống
+  audit      CRASH  test/mjsunit/.../regress-563068683.js → 216c15a22212  (1099s)
   ...
+S1      System One (laya) — chấm crash gần nhất
+  94a4430f5878  exploitable █████████░ 0.87   ladder ████████░░ 0.85
+                impact=sandbox-rce · next=report · 13937ms
 ```
 
 ### 1.1 FARM — worker fuzz
@@ -19,6 +27,8 @@ AUX     10/10 loop sống
 |---|---|
 | `●` | unit đang sống (nếu chết: `DEAD`, watchdog restart trong ≤60s) |
 | `X/s` | throughput gần nhất parse từ log: fuzzilli = `execsPerSecond` (stats JSON); lfuzz-* = dòng `exec/s:` cuối trong log |
+| `↑Xm` | uptime unit (m/h/d) |
+| `⟨rotate⟩` | lane phụ do rotator xoay vòng (không phải lane cố định) |
 
 Đọc thế nào:
 
@@ -93,6 +103,19 @@ Sources: `fuzzilli` · `lfuzz-*` (engine) · `variant` · `upstream-regress` (au
 
 `day $X · tier=flash` — chi phí LLM hôm nay + tier model case đang dùng (budget chọn theo ngày).
 `DISK XG free · alerts(unacked)=N` — dung lượng + alert telemetry chưa xác nhận.
+
+### 1.9 S1 — System One (JEV-style) trong monitor
+
+```
+S1      System One (laya) — chấm crash gần nhất
+  94a4430f5878  exploitable █████████░ 0.87   ladder ████████░░ 0.85
+                impact=sandbox-rce · next=report · 13937ms
+```
+- Bars = xác suất `noul` (0..1) của laya cho câu hỏi exploitable/ladder — **advisory**:
+  zero-shot chưa đủ tin, đang fine-tune (M5-05b). Đọc thanh để so sánh tương đối giữa
+  các crash, đừng dùng làm phán quyết.
+- Dòng dưới: impact/next (choice) + thời gian suy luận (CPU ~6–15s/câu trả lời).
+- Kết quả lưu ở `store/s1/<hash>.json`; chạy `chromly s1 triage <hash>` để thêm crash vào đây.
 
 ## 2. Event feed — `chromly trace -f`
 
