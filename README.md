@@ -20,6 +20,7 @@ chromly fuzz engine --build [--fuzzer regexp]     # vendor libFuzzer + re-link e
 chromly fuzz lfuzz --unit lfuzz-<target> --once   # mutation 1 cycle cho bất kỳ harness nào
 chromly fuzz engine --merge --unit lfuzz-parser   # tối giản corpus định kỳ (giữ backup)
 chromly tot build · status · verify <crash|file>  # build ToT + check "còn sống" (unfixed)
+chromly s1 serve · check · triage <hash>          # System One (laya) — chấm crash (advisory)
 chromly info -w · chromly trace -f                # monitor + trace
 ```
 

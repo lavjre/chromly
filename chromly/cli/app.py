@@ -58,6 +58,15 @@ def main(argv: list[str] | None = None) -> int:
         help="flags thêm cho d8; value bắt đầu bằng '--' phải viết dạng --flags=--no-fuzzing",
     )
 
+    p_s1 = sub.add_parser(
+        "s1", help="System One decision layer (laya/Jev-style) — triage bằng typed decisions"
+    )
+    s1_sub = p_s1.add_subparsers(dest="s1_cmd")
+    s1_sub.add_parser("serve", help="chạy S1 server local (aux loop, giữ model thường trú)")
+    s1_sub.add_parser("check", help="smoke: 1 decision qua server")
+    p_s1t = s1_sub.add_parser("triage", help="chấm 1 crash: exploitable/ladder/impact/next")
+    p_s1t.add_argument("target", help="hash crash (prefix)")
+
     p_fuzz = sub.add_parser("fuzz", help="fuzz farm — worker up/down/status (§5.2)")
     fuzz_sub = p_fuzz.add_subparsers(dest="fuzz_cmd")
     fuzz_sub.add_parser("up", help="start workers")
@@ -335,6 +344,10 @@ def main(argv: list[str] | None = None) -> int:
         from chromly.builds.tot import run_tot_cmd
 
         return run_tot_cmd(args)
+    if args.cmd == "s1":
+        from chromly.s1.decide import run_s1_cmd
+
+        return run_s1_cmd(args)
     if args.cmd in ("up", "down"):
         from chromly.orchestrator.supervisor import run_supervisor_cmd
 

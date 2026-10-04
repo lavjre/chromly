@@ -27,6 +27,7 @@ AUX_SPECS: dict[str, list[str]] = {
     "review": ["intel", "review", "--limit", "2", "--loop", "--interval", "7200"],
     "audit": ["intel", "audit", "--max", "40", "--loop", "--interval", "86400"],
     "diffopt": ["fuzz", "diffopt", "--loop", "--interval", "120", "--seconds", "540"],
+    "s1": ["s1", "serve"],
     "cases": ["case", "auto", "--interval", "900"],
     "triage": ["triage", "--loop", "--interval", "300"],
 }
