@@ -202,3 +202,18 @@ def test_triage_fuzzilli_fallback_build(monkeypatch, tmp_path: Path) -> None:
     assert res["engine"] == "fuzzilli"
     assert res["crashed"] == "5/5"
     assert any("fuzzilli" in c[0] and "--fuzzing" in c[1] for c in calls)
+
+
+def test_score_fuzzilli_output_khong_bi_tinh_harness() -> None:
+    """Output của fuzzilli d8 ('Fuzzer output channel...') không phải harness-frame → không −3."""
+    from chromly.triage import score
+
+    s = score.score(
+        {"class": "type-confusion-dcheck", "access": None},
+        "abort: CSA_DCHECK failed: ... accessor-assembler.cc\nFuzzer output channel not available",
+    )
+    assert s["score"] == 3, s
+    assert "harness-related −3" not in s["reasons"]
+
+    s2 = score.score({"class": "other", "access": None}, "... test/fuzzer/fuzzer.cc ...")
+    assert "harness-related −3" in s2["reasons"]

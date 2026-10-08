@@ -30,7 +30,7 @@ def score(fault: dict, stack_text: str) -> dict:
         total -= 2
         reasons.append("dcheck-only −2")
 
-    if "test/fuzzer" in low or "fuzzer" in low:
+    if "test/fuzzer" in low or "fuzzer.cc" in low:
         total -= 3
         reasons.append("harness-related −3")
 
