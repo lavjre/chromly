@@ -230,6 +230,10 @@ def _file_variant_crash(sha: str, result: dict, source: str = "variant") -> None
     art = paths.STORE_DIR / "crashes" / h
     art.mkdir(parents=True, exist_ok=True)
     shutil.copy2(test, art / f"program_{sha[:12]}_{result['variant']}")
+    flags = _extract_run_flags(test)
+    if flags:
+        # để triage/case repro đúng pipeline (vd --turbolev) mà không cần đọc header
+        (art / "repro.flags.txt").write_text("\n".join(flags) + "\n")
     (art / "meta.json").write_text(
         json.dumps(
             {"hash": h, "unit": source, "orig_path": str(test), "created": time.time()},

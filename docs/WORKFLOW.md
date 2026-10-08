@@ -147,6 +147,10 @@ flowchart TD
 - **`chromly tot verify`** (ADR-012): build ToT (asan+dcheck) một lần, sau đó mọi repro chạy được
   trên ToT → `STILL-CRASHES` (còn sống) / `CLEAN` (đã fix). Case mission tự chèn đường dẫn ToT.
   Đây là bước bắt buộc trước mọi claim "0day".
+- **fix-coverage** (ADR-013, `tools/fixcheck.sh`): khi đã biết commit fix upstream — apply patch
+  lên snapshot → rebuild → chạy lại repro + regression test của fix → **covered (n-day, đóng)** hay
+  **surviving (candidate)**. Lưu ý: "còn sống trên ToT" ≠ unfixed nếu ToT cũ hơn fix
+  (bài học maglev family 09/10 — ToT Oct 2 < fix Oct 7).
 - **`chromly s1`** (M5-05): decision layer local (laya, System One) — chấm crash theo
   `kind / exploitable / impact / ladder / next`. Hiện **advisory** (zero-shot chưa đủ tin);
   **M5-05b**: fine-tune trên dataset 14 item (crash store + calibration + verdict) đang chạy,

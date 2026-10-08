@@ -174,3 +174,28 @@ def test_run_test_timeout_outcome(monkeypatch) -> None:
     monkeypatch.setattr(variants, "_run_once", fake_run)
     res = variants.run_test(_P("/bin/true"), _P("/tmp/fake2.js"))
     assert res["outcome"] == "timeout"
+
+
+def test_file_variant_crash_writes_flags(monkeypatch, tmp_path: Path) -> None:
+    """Crash artifact phải kèm repro.flags.txt (triage/case repro đúng pipeline)."""
+    _setup(monkeypatch, tmp_path)
+    sha = "e" * 40
+    d = variants.intel_dir() / sha
+    d.mkdir(parents=True)
+    (d / "variants.json").write_text(
+        json.dumps(
+            [
+                {
+                    "title": "v",
+                    "confidence": "high",
+                    "test_js": "// flags: --turbolev --foo\nprint(1);",
+                }
+            ]
+        )
+    )
+    variants.generate_for(sha)
+    variants._file_variant_crash(sha, {"variant": "variant-1.js"})
+    art_dirs = list((tmp_path / "store" / "crashes").iterdir())
+    assert len(art_dirs) == 1
+    flags = (art_dirs[0] / "repro.flags.txt").read_text().split()
+    assert "--turbolev" in flags and "--foo" in flags
