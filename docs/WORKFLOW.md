@@ -152,9 +152,11 @@ flowchart TD
   **surviving (candidate)**. Lưu ý: "còn sống trên ToT" ≠ unfixed nếu ToT cũ hơn fix
   (bài học maglev family 09/10 — ToT Oct 2 < fix Oct 7).
 - **`chromly s1`** (M5-05): decision layer local (laya, System One) — chấm crash theo
-  `kind / exploitable / impact / ladder / next`. Hiện **advisory** (zero-shot chưa đủ tin);
-  **M5-05b**: fine-tune trên dataset 14 item (crash store + calibration + verdict) đang chạy,
-  eval trên holdout 3 item.
+  `kind / exploitable / impact / reachable / ladder / next`. `reachable` (web/natives/flag-gated)
+  + guardrail tất định: `next=report` bị hạ xuống `analyze-more` nếu reachable=natives/flag-gated
+  (bài học 94a4430f5878: crash natives-only bị chấm 0.87 sandbox-rce). Hiện **advisory** (zero-shot
+  chưa đủ tin); **M5-05b**: fine-tune trên dataset 14 item (crash store + calibration + verdict)
+  đang chạy, eval trên holdout 3 item.
 - **exploit lab** (M5): L0 assessment → L1 ladder (addrof/fakeobj, verifier ≥95%×200) — **chờ
   substrate** (chưa crash nào có primitive điều khiển được; xem `build/tasks/M5-03-l1-primitive.md`).
 

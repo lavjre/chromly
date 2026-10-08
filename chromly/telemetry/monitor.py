@@ -611,8 +611,9 @@ def render_info(color: bool | None = None) -> str:
             lad_s = f"{_bar(lad)} {lad:.2f}" if isinstance(lad, (int, float)) else "—"
             lines.append(f"  {h}  exploitable {e}   ladder {lad_s}")
             lines.append(
-                f"                impact={r.get('impact') or '—'} · next={r.get('next') or '—'} "
-                f"· {r.get('elapsed_ms') or '?'}ms"
+                f"                impact={r.get('impact') or '—'}"
+                f" · reachable={r.get('reachable') or '—'}"
+                f" · next={r.get('next') or '—'} · {r.get('elapsed_ms') or '?'}ms"
             )
 
     lines.append("BUILD   " + " · ".join(s["builds"] or ["—"]))

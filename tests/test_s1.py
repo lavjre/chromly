@@ -170,3 +170,22 @@ def test_hf_snapshot_missing(tmp_path: Path, monkeypatch) -> None:
         pass
     else:  # pragma: no cover
         raise AssertionError("phải raise RuntimeError khi thiếu snapshot")
+
+
+def test_reachability_hint(tmp_path: Path) -> None:
+    """Hint reachability: plain JS vs intrinsics vs flags (bài học 94a4430f5878)."""
+    p = tmp_path / "r.js"
+    p.write_text("print('hello');\n")
+    assert "plain JS" in decide._reachability_hint(p, "--allow-natives-syntax --maglev")
+    p.write_text("let x = 10 % 3;\n%OptimizeFunctionOnNextCall(f);\n")
+    assert "test-only intrinsics" in decide._reachability_hint(p, "--allow-natives-syntax")
+    assert "AND non-default" in decide._reachability_hint(p, "--allow-natives-syntax --fuzzing")
+    assert "reachable" in decide.CRASH_QUESTIONS
+
+
+def test_guard_next() -> None:
+    """next=report + reachable=natives/flag-gated → downgrade analyze-more."""
+    assert decide._guard_next("report", "natives") == ("analyze-more", True)
+    assert decide._guard_next("report", "flag-gated") == ("analyze-more", True)
+    assert decide._guard_next("report", "web") == ("report", False)
+    assert decide._guard_next("close", "natives") == ("close", False)

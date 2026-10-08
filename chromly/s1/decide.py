@@ -132,6 +132,19 @@ CRASH_QUESTIONS = {
             "the attacker influences, not just a crash."
         ),
     },
+    "reachable": {
+        "type": "choice",
+        "instructions": (
+            "How would this crash be triggered in practice? Judge from the repro script and "
+            "flags: plain JS, test-only intrinsics, or non-default developer flags?"
+        ),
+        "criteria": {
+            "web": "plain JS only — no test intrinsics, no exotic flags (browser-reachable)",
+            "natives": "needs --allow-natives-syntax or d8 test APIs (%, d8.serializer, ...)",
+            "flag-gated": "needs non-default developer flags (--turbolev, --fuzzing, --no-...)",
+            "unknown": "cannot tell from the output/repro",
+        },
+    },
     "next": {
         "type": "choice",
         "instructions": "What should the pipeline do with this crash next?",
@@ -139,7 +152,10 @@ CRASH_QUESTIONS = {
             "close": "not a bug / false positive — close it",
             "analyze-more": "unclear potential — needs deeper manual analysis",
             "attempt-ladder": "promising primitive — attempt the exploit ladder",
-            "report": "submittable security bug — draft a report",
+            "report": (
+                "submittable security bug — draft a report (only when reachable is web or "
+                "unknown; natives/flag-gated → prefer analyze-more)"
+            ),
         },
     },
 }
@@ -172,6 +188,31 @@ def _head(path: Path, n: int) -> str:
         if len(out) >= n:
             break
     return "\n".join(out)
+
+
+_STD_FLAGS = {"--allow-natives-syntax", "--expose-gc", "--maglev"}
+_INTRINSIC_RE = re.compile(r"%[A-Za-z_$]|d8\.\w")
+
+
+def _reachability_hint(repro: Path | None, flags: str) -> str:
+    """Heuristic trước model: script dùng intrinsic test / flags lạ không?
+
+    Bài học 94a4430f5878: S1 chấm 0.87 sandbox-rce cho crash chỉ reachable qua
+    `%NeverOptimizeFunction` (natives) — cần tín hiệu reachability rõ ràng.
+    """
+    txt = ""
+    if repro is not None:
+        with contextlib.suppress(OSError):
+            txt = repro.read_text(errors="replace")
+    natives = bool(_INTRINSIC_RE.search(txt))
+    exotic = [f for f in flags.split() if f.startswith("--") and f.split("=")[0] not in _STD_FLAGS]
+    if natives and exotic:
+        return "repro uses test-only intrinsics AND non-default flags"
+    if natives:
+        return "repro uses test-only intrinsics (%, d8.*)"
+    if exotic:
+        return f"repro uses non-default flags: {' '.join(exotic[:6])}"
+    return "repro is plain JS (no test intrinsics, no non-default flags)"
 
 
 def build_crash_state(hash_or_prefix: str, include_pipeline_label: bool = True) -> tuple[str, Path]:
@@ -219,6 +260,7 @@ def build_crash_state(hash_or_prefix: str, include_pipeline_label: bool = True) 
     parts.append(f"source: {meta.get('unit') or meta.get('source') or 'unknown'}")
     if flags:
         parts.append(f"repro_flags: {flags}")
+    parts.append(f"reachability_hint: {_reachability_hint(repro, flags)}")
     crash_txt = _head(tri / "asan.txt", _STACK_MAX_LINES)
     if crash_txt:
         parts.append("## crash output (head)\n" + crash_txt)
@@ -241,11 +283,24 @@ def build_crash_state(hash_or_prefix: str, include_pipeline_label: bool = True) 
     return state, d
 
 
+def _guard_next(next_choice: str | None, reachable: str | None) -> tuple[str | None, bool]:
+    """Report chỉ hợp lệ khi không test-API/flag-gated (bài học 94a4430f5878).
+
+    Model có thể vẫn chọn report dù reachable=natives — guardrail tất định ở đây.
+    """
+    if next_choice == "report" and reachable in ("natives", "flag-gated"):
+        return "analyze-more", True
+    return next_choice, False
+
+
 def triage_crash(hash_or_prefix: str) -> dict:
     """Chạy S1 trên 1 crash, lưu store/s1/<hash>.json, trả kết quả."""
     state, d = build_crash_state(hash_or_prefix)
     res = ask(state, CRASH_QUESTIONS)
     answers = res.get("answers", {})
+    next_choice, guarded = _guard_next(
+        answers.get("next", {}).get("choice"), answers.get("reachable", {}).get("choice")
+    )
     out = {
         "hash": d.name,
         "ts": time.time(),
@@ -255,7 +310,9 @@ def triage_crash(hash_or_prefix: str) -> dict:
         "exploitable": answers.get("exploitable", {}).get("noul"),
         "ladder": answers.get("ladder", {}).get("noul"),
         "impact": answers.get("impact", {}).get("choice"),
-        "next": answers.get("next", {}).get("choice"),
+        "reachable": answers.get("reachable", {}).get("choice"),
+        "next": next_choice,
+        "next_guarded": guarded,
         "answers": answers,
     }
     s1_dir().mkdir(parents=True, exist_ok=True)
@@ -325,8 +382,8 @@ def run_s1_cmd(args) -> int:
             return 1
         print(
             f"s1 {out['hash'][:12]}: exploitable={out['exploitable']:.2f} "
-            f"ladder={out['ladder']:.2f} impact={out['impact']} next={out['next']} "
-            f"({out['elapsed_ms']}ms)"
+            f"ladder={out['ladder']:.2f} impact={out['impact']} reachable={out.get('reachable')} "
+            f"next={out['next']} ({out['elapsed_ms']}ms)"
         )
         return 0
     if sub == "dataset":
