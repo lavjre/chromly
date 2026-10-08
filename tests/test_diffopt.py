@@ -194,3 +194,20 @@ def test_normalize_trace_frames() -> None:
         "=====================\n"
     )
     assert diffopt._normalize(a) == diffopt._normalize(b)
+
+
+def test_diffopt_skips_bad_file(monkeypatch, tmp_path: Path) -> None:
+    """1 file lỗi (decode/IO) không giết cycle; cursor vẫn tiến qua nó."""
+    _fake_corpus(monkeypatch, tmp_path, n=3)
+    _fake_d8(tmp_path, '#!/bin/bash\necho "SAME"\nexit 0\n')
+    orig = diffopt.run_once
+
+    def flaky(d8, prog, flags, timeout=20):
+        if "program_1" in str(prog):
+            raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "bad")
+        return orig(d8, prog, flags, timeout)
+
+    monkeypatch.setattr(diffopt, "run_once", flaky)
+    s = diffopt.run_diffopt(limit=3, axes=[("no-opt", ["--no-opt"])])
+    assert s["sampled"] == 3
+    assert diffopt._load_state()["cursor"].startswith("program_2")

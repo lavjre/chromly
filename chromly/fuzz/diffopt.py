@@ -189,7 +189,7 @@ def _crashy(res: dict) -> bool:
 
 def _save_diff(d: Path, program: Path, axis: str, a1, a2, b1, b2) -> None:
     d.mkdir(parents=True, exist_ok=True)
-    (d / "program.js").write_text(program.read_text())
+    (d / "program.js").write_text(program.read_text(errors="replace"))
     for name, res in (("a1", a1), ("a2", a2), ("b1", b1), ("b2", b2)):
         (d / f"{name}.txt").write_text(f"rc={res['rc']}\n{res['out']}\n")
     (d / "meta.json").write_text(
@@ -269,7 +269,11 @@ def run_diffopt(
     seconds: float = DEFAULT_SECONDS,
 ) -> dict:
     """Một cycle: quét corpus từ cursor, mỗi program 1 axis (luân phiên), dừng theo
-    limit hoặc budget `seconds`. Trả summary (giữ key `sampled`/`diffs` cho acceptance)."""
+    limit hoặc budget `seconds`. Trả summary (giữ key `sampled`/`diffs` cho acceptance).
+
+    Guard per-program: 1 file lỗi (decode/IO...) không được giết cả cycle — skip + log
+    và cursor vẫn tiến (bài học 08/10: 694 cycle chết vì 1-2 file trước cursor).
+    """
     d8 = paths.V8_ROOT / "out" / build / "d8"
     if not d8.is_file():
         raise FileNotFoundError(f"thiếu {d8}")
@@ -287,58 +291,61 @@ def run_diffopt(
     for i, prog in enumerate(programs):
         if seconds and time.monotonic() - t0 >= seconds:
             break
-        axis_name, axis_flags = axes[i % len(axes)]
-        sampled += 1
-        last_name = prog.name
-        a1 = run_once(d8, prog, [], timeout)
-        b1 = run_once(d8, prog, axis_flags, timeout)
-        if (a1["rc"], a1["out"]) == (b1["rc"], b1["out"]):
-            # vẫn bắt crash release (A/B giống nhau nhưng cùng crash tái lập)
-            if _crashy(a1):
-                a2 = run_once(d8, prog, [], timeout)
-                if (a1["rc"], a1["out"]) == (a2["rc"], a2["out"]):
-                    crashes += 1
-                    _file_finding(
-                        prog,
-                        "release-crash",
-                        "default",
-                        5,
-                        f"rc={a1['rc']}\n{a1['out'][-800:]}",
-                    )
-                    print(f"[diffopt] CRASH {prog.name} rc={a1['rc']}", flush=True)
+        try:
+            axis_name, axis_flags = axes[i % len(axes)]
+            sampled += 1
+            last_name = prog.name
+            a1 = run_once(d8, prog, [], timeout)
+            b1 = run_once(d8, prog, axis_flags, timeout)
+            if (a1["rc"], a1["out"]) == (b1["rc"], b1["out"]):
+                # vẫn bắt crash release (A/B giống nhau nhưng cùng crash tái lập)
+                if _crashy(a1):
+                    a2 = run_once(d8, prog, [], timeout)
+                    if (a1["rc"], a1["out"]) == (a2["rc"], a2["out"]):
+                        crashes += 1
+                        _file_finding(
+                            prog,
+                            "release-crash",
+                            "default",
+                            5,
+                            f"rc={a1['rc']}\n{a1['out'][-800:]}",
+                        )
+                        print(f"[diffopt] CRASH {prog.name} rc={a1['rc']}", flush=True)
+                continue
+            if not (_comparable(a1) and _comparable(b1)):
+                continue
+            # confirm: mỗi bên phải ỔN ĐỊNH qua 6 lần chạy (lọc async/worker race)
+            runs_a = [a1] + [run_once(d8, prog, [], timeout) for _ in range(5)]
+            if len({_sig(r) for r in runs_a}) != 1:
+                continue
+            runs_b = [b1] + [run_once(d8, prog, axis_flags, timeout) for _ in range(5)]
+            if len({_sig(r) for r in runs_b}) != 1:
+                continue
+            if _sig(runs_a[0]) == _sig(runs_b[0]):
+                continue
+            key = f"{hashlib.sha256(prog.read_bytes()).hexdigest()[:24]}:{axis_name}"
+            if key in found:
+                continue
+            diffs += 1
+            art = out_base / f"{i:05d}_{prog.stem[:48]}"
+            _save_diff(art, prog, axis_name, runs_a[0], runs_a[1], runs_b[0], runs_b[1])
+            h = _file_finding(
+                prog,
+                "miscompile-diff",
+                axis_name,
+                4,
+                f"rcA={a1['rc']} rcB={b1['rc']}\n"
+                f"--- A ---\n{a1['out'][-400:]}\n--- B ---\n{b1['out'][-400:]}",
+            )
+            found[key] = {"dir": str(art), "hash": h[:12], "ts": time.time()}
+            print(
+                f"[diffopt] DIFF {prog.name} axis={axis_name} rcA={a1['rc']} rcB={b1['rc']} "
+                f"(artifact {art.name})",
+                flush=True,
+            )
+        except Exception as exc:  # noqa: BLE001 — 1 file lỗi không giết cả cycle
+            print(f"[diffopt] skip {prog.name}: {type(exc).__name__}: {exc}", flush=True)
             continue
-        if not (_comparable(a1) and _comparable(b1)):
-            continue
-        # confirm: mỗi bên phải ỔN ĐỊNH qua 6 lần chạy (lọc async/worker race —
-        # worker in lỗi N lần tuỳ scheduling; 3 lần chưa đủ, gặp 2026-10-02)
-        runs_a = [a1] + [run_once(d8, prog, [], timeout) for _ in range(5)]
-        if len({_sig(r) for r in runs_a}) != 1:
-            continue
-        runs_b = [b1] + [run_once(d8, prog, axis_flags, timeout) for _ in range(5)]
-        if len({_sig(r) for r in runs_b}) != 1:
-            continue
-        if _sig(runs_a[0]) == _sig(runs_b[0]):
-            continue
-        key = f"{hashlib.sha256(prog.read_bytes()).hexdigest()[:24]}:{axis_name}"
-        if key in found:
-            continue
-        diffs += 1
-        art = out_base / f"{i:05d}_{prog.stem[:48]}"
-        _save_diff(art, prog, axis_name, runs_a[0], runs_a[1], runs_b[0], runs_b[1])
-        h = _file_finding(
-            prog,
-            "miscompile-diff",
-            axis_name,
-            4,
-            f"rcA={a1['rc']} rcB={b1['rc']}\n"
-            f"--- A ---\n{a1['out'][-400:]}\n--- B ---\n{b1['out'][-400:]}",
-        )
-        found[key] = {"dir": str(art), "hash": h[:12], "ts": time.time()}
-        print(
-            f"[diffopt] DIFF {prog.name} axis={axis_name} rcA={a1['rc']} rcB={b1['rc']} "
-            f"(artifact {art.name})",
-            flush=True,
-        )
 
     state["cursor"] = last_name
     sweep_done = bool(programs) and len(programs) < cap
@@ -376,8 +383,8 @@ def run_diffopt_cmd(args) -> int:
                 timeout=getattr(args, "timeout", 20),
                 seconds=getattr(args, "seconds", DEFAULT_SECONDS),
             )
-        except (FileNotFoundError, ValueError) as e:
-            print(f"diffopt: {e}", flush=True)
+        except Exception as e:  # noqa: BLE001 — log chẩn đoán, không chết loop
+            print(f"diffopt: {type(e).__name__}: {e}", flush=True)
             return 1
         if s["diffs"]:
             print(f"  → {s['diffs']} ứng viên miscompile tại {s['artifact_dir']}", flush=True)
