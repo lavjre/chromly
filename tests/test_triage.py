@@ -217,3 +217,33 @@ def test_score_fuzzilli_output_khong_bi_tinh_harness() -> None:
 
     s2 = score.score({"class": "other", "access": None}, "... test/fuzzer/fuzzer.cc ...")
     assert "harness-related −3" in s2["reasons"]
+
+
+def test_repro_run_output_prefers_crash(monkeypatch) -> None:
+    """Flaky: output trả về phải là lượt crash, không phải lượt sạch đầu tiên."""
+    import types
+
+    from chromly.triage import repro as R
+
+    seq = [
+        ("clean run\n", 0),
+        ("# Fatal error in ../../src/x.cc, line 1\nCheck failed: x\n", 133),
+        ("clean again\n", 0),
+    ]
+    calls = {"i": 0}
+
+    def fake_run(cmd, capture_output=True, text=True, timeout=60, env=None):
+        out, rc = seq[calls["i"]]
+        calls["i"] += 1
+
+        class P:
+            stdout = out
+            stderr = ""
+            returncode = rc
+
+        return P()
+
+    monkeypatch.setattr(R, "subprocess", types.SimpleNamespace(run=fake_run))
+    res = R.repro_run(Path("/bin/true"), Path("x.js"), runs=3)
+    assert res["crashed"] == 1
+    assert "Check failed" in res["output"]

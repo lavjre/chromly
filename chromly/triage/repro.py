@@ -99,6 +99,7 @@ def repro_run(
     cmd = [str(d8), "--allow-natives-syntax", *(extra_flags or []), str(script)]
     crashed = 0
     outputs: list[str] = []
+    crash_output: str | None = None
     last_rc = None
     for _ in range(runs):
         try:
@@ -120,12 +121,16 @@ def repro_run(
         asan_crash = "ERROR: AddressSanitizer" in out or "Fatal error" in out
         if (rc is not None and (rc in CRASH_CODES or rc < 0)) or asan_crash:
             crashed += 1
+            if crash_output is None:
+                crash_output = out
     return {
         "crashed": crashed,
         "of": runs,
         "stable": crashed == runs,
         "last_rc": last_rc,
-        "output": outputs[0] if outputs else "",
+        # flaky: ưu tiên output của lượt crash (outputs[0] có thể là lượt sạch
+        # → classify sai class, bài học c240/cdcb 08/10)
+        "output": crash_output if crash_output is not None else (outputs[0] if outputs else ""),
     }
 
 
