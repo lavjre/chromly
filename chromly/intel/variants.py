@@ -220,8 +220,8 @@ def run_variants(sha: str) -> dict:
     return summary
 
 
-def _file_variant_crash(sha: str, result: dict) -> None:
-    """Variant crash → crash store (source='variant') để auto-case pipeline bắt."""
+def _file_variant_crash(sha: str, result: dict, source: str = "variant") -> None:
+    """Variant crash → crash store (source='variant'/'srcreview') để auto-case pipeline bắt."""
     test = tests_dir_for(sha) / result["variant"]
     if not test.is_file():
         return
@@ -232,7 +232,7 @@ def _file_variant_crash(sha: str, result: dict) -> None:
     shutil.copy2(test, art / f"program_{sha[:12]}_{result['variant']}")
     (art / "meta.json").write_text(
         json.dumps(
-            {"hash": h, "unit": "variant", "orig_path": str(test), "created": time.time()},
+            {"hash": h, "unit": source, "orig_path": str(test), "created": time.time()},
             indent=2,
         )
     )
@@ -241,12 +241,12 @@ def _file_variant_crash(sha: str, result: dict) -> None:
         with con:
             con.execute(
                 "INSERT OR IGNORE INTO crashes (hash, fault_type, severity, build_rev, "
-                "source, state) VALUES (?, 'variant-crash', 5, ?, 'variant', 'triaged')",
-                (h, sha[:12]),
+                "source, state) VALUES (?, 'variant-crash', 5, ?, ?, 'triaged')",
+                (h, sha[:12], source),
             )
     finally:
         con.close()
-    print(f"[variants] CRASH → store/crashes/{h[:12]} (từ {sha[:12]})", flush=True)
+    print(f"[variants] CRASH → store/crashes/{h[:12]} (từ {sha[:12]}, source={source})", flush=True)
 
 
 def run_pending_variants(limit: int = 5) -> list[dict]:

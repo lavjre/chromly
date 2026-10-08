@@ -153,6 +153,17 @@ def main(argv: list[str] | None = None) -> int:
     p_rev.add_argument("--dry-run", action="store_true", help="in thứ tự ưu tiên, không review")
     p_var = intel_sub.add_parser("variants", help="sinh + chạy variant test (M2-03)")
     p_var.add_argument("--sha", default=None, help="mặc định: commit reviewed mới nhất")
+    p_src = intel_sub.add_parser(
+        "srcreview", help="source-review: hotspot + agent đọc src tìm bug còn sống (M5+)"
+    )
+    p_src.add_argument("--file", default=None, help="review đúng 1 file (vd src/maglev/...)")
+    p_src.add_argument("--hotspots", action="store_true", help="chỉ in bảng hotspot")
+    p_src.add_argument(
+        "--top", type=int, default=None, help="hotspots: số dòng bảng; scan: số file mỗi lượt"
+    )
+    p_src.add_argument("--limit", type=int, default=3, help="số variant tối đa mỗi file")
+    p_src.add_argument("--loop", action="store_true", help="chạy mãi (aux supervisor)")
+    p_src.add_argument("--interval", type=float, default=14400.0, help="giây giữa các lượt (loop)")
     p_aud = intel_sub.add_parser("audit", help="upstream-regress delta audit (M2-06)")
     p_aud.add_argument("--max", type=int, default=40, help="số test tối đa")
     p_aud.add_argument("--dry-run", action="store_true", help="chỉ liệt kê, không chạy")

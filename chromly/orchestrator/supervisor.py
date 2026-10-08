@@ -26,6 +26,7 @@ AUX_SPECS: dict[str, list[str]] = {
     "sched": ["sched", "loop", "--interval", "60"],
     "review": ["intel", "review", "--limit", "2", "--loop", "--interval", "7200"],
     "audit": ["intel", "audit", "--max", "40", "--loop", "--interval", "86400"],
+    "srcrev": ["intel", "srcreview", "--loop", "--interval", "14400", "--top", "2"],
     "diffopt": ["fuzz", "diffopt", "--loop", "--interval", "120", "--seconds", "540"],
     "s1": ["s1", "serve"],
     "lanes": ["fuzz", "lanes", "--loop", "--interval", "600"],

@@ -82,7 +82,8 @@ flowchart TD
                                                 ▼
  ingest (15s) ──► crash store <sha256>/ + DB(state=raw)
                                                 │
- triage (300s) ──► repro ×5 (out/asan) → classify (heap-buffer-overflow/UAF/dcheck/…) + score
+ triage (300s) ──► repro ×5 (out/asan; source=fuzzilli → fallback out/fuzzilli + --fuzzing)
+                  → classify (heap-buffer-overflow/UAF/dcheck/…) + score
                                                 │
                  ┌──────────────┬───────────────┴───────────────┐
                  ▼              ▼                               ▼
@@ -100,6 +101,7 @@ flowchart TD
                 │  review (2h): agent đọc diff → review.md + variants.json (test_js)       │
                 │  variants: chạy test trên asan+release d8 → crash store (source=variant) │
                 │  audit (24h): delta mirror → regression test mới → crash (upstream-regress)│
+                │  srcreview (4h): hotspot fix-density → agent đọc source → test → crash    │
                 └───────────────────────────────┬──────────────────────────────────────────┘
                                                 ▼
                                   (cùng đường triage → case như Track A)
@@ -161,7 +163,7 @@ raw ──triage──► flaky ──(ổn định)──► triaged ──case
  │  backoff 6h)                                (case VERDICT)
 ```
 
-Severity ≥4 → auto-case bắt. Source: `fuzzilli · lfuzz-* · diffopt · variant · upstream-regress`.
+Severity ≥4 → auto-case bắt. Source: `fuzzilli · lfuzz-* · diffopt · variant · srcreview · upstream-regress`.
 
 ## 5. Vòng đời case
 
@@ -176,8 +178,9 @@ Severity ≥4 → auto-case bắt. Source: `fuzzilli · lfuzz-* · diffopt · va
 
 - **System slice**: farm + aux chạy dưới `chromly-supervisor.service` (systemd) — miễn nhiễm
   oomd user-slice (bài học 04/10: oomd kill cả scope terminal 35 process).
-- **Aux loops (11)**: watchdog 60s · ingest 15s · metrics 60s · sched 60s · triage 300s ·
-  cases 900s · diffopt 540s+120s · review 2h · audit 24h · intel ~1h · s1 serve (thường trú) ·
+- **Aux loops (12)**: watchdog 60s · ingest 15s · metrics 60s · sched 60s · triage 300s ·
+  cases 900s · diffopt 540s+120s · review 2h · audit 24h · srcreview 4h (hotspot fix-density →
+  agent đọc source tìm bug cũ còn sống) · intel ~1h · s1 serve (thường trú) ·
   lanes 600s (xoay engine lane: keep=2, slice=2h/target).
 - **watchdog**: hang (CPU ticks đứng) / dead → kill+restart; crash-loop → degraded 30' rồi tự hồi;
   aux chết → respawn; case RUNNING quá hạn → TIMEOUT.
@@ -191,6 +194,7 @@ Severity ≥4 → auto-case bắt. Source: `fuzzilli · lfuzz-* · diffopt · va
 audit ──► n-day crash ──► triage ──► case ──► verdict ─┐
 variants ──► crash ────────────────────────────────────┤
 diffopt ──► miscompile candidate ──────────────────────┤
+srcreview ──► crash (source=srcreview) ────────────────┤
                                                        ▼
                              crash store + verdict + ToT results
                                                        │

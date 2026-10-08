@@ -321,5 +321,9 @@ def run_intel_cmd(args: argparse.Namespace) -> int:
         from chromly.intel.variants import run_variants_cmd
 
         return run_variants_cmd(args)
-    print("usage: chromly intel {watch|review|variants|status}")
+    if cmd == "srcreview":
+        from chromly.intel.srcreview import run_srcreview_cmd
+
+        return run_srcreview_cmd(args)
+    print("usage: chromly intel {watch|review|variants|srcreview|status}")
     return 2

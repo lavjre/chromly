@@ -6,6 +6,7 @@ Crash artifact trong store/crashes/<hash>/ (M1-05). Chọn script để repro:
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -60,6 +61,19 @@ def pick_script(ad: Path) -> Path:
 
 def d8_asan() -> Path:
     return paths.V8_ROOT / "out" / "asan" / "d8"
+
+
+def d8_fuzzilli() -> Path:
+    return paths.V8_ROOT / "out" / "fuzzilli" / "d8"
+
+
+def _crash_source(ad: Path) -> str:
+    """unit/source từ meta.json của crash (vd 'fuzzilli')."""
+    try:
+        meta = json.loads((ad / "meta.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return str(meta.get("unit") or meta.get("source") or "")
 
 
 def load_flags(d: Path) -> list[str]:
@@ -126,7 +140,20 @@ def run_triage(hash_prefix: str, runs: int = 5) -> dict:
     d8 = d8_asan()
     if not d8.is_file():
         raise FileNotFoundError(f"thiếu {d8} — build asan trước")
-    res = repro_run(d8, script, runs=runs, extra_flags=load_flags(ad))
+    flags = load_flags(ad)
+    res = repro_run(d8, script, runs=runs, extra_flags=flags)
+    engine = "asan"
+
+    # Crash từ fuzzilli không repro trên asan (program giả định môi trường --fuzzing
+    # của d8 fuzzilli build) → thử lại trên đúng build. Bài học 08/10: 3 crash raw
+    # không tái hiện vì triage chỉ chạy asan.
+    if res["crashed"] == 0 and _crash_source(ad) == "fuzzilli":
+        d8f = d8_fuzzilli()
+        if d8f.is_file():
+            res2 = repro_run(d8f, script, runs=runs, extra_flags=[*flags, "--fuzzing"])
+            if res2["crashed"] > 0:
+                res = res2
+                engine = "fuzzilli"
 
     td = triage_dir(ad.name)
     td.mkdir(parents=True, exist_ok=True)
@@ -138,6 +165,7 @@ def run_triage(hash_prefix: str, runs: int = 5) -> dict:
         "hash": ad.name,
         "crashed": f"{res['crashed']}/{res['of']}",
         "stable": res["stable"],
+        "engine": engine,
         "repro": str(td / "repro.js"),
         "asan": str(td / "asan.txt"),
     }

@@ -132,9 +132,7 @@ def _restart(state: dict, name: str, rec: dict, reason: str, now: float) -> dict
     hist = [t for t in rec.get("restarts", []) if now - t < CRASH_LOOP_WINDOW]
     hist.append(now)
     if len(hist) >= CRASH_LOOP_N:
-        farm.merge_unit_fields(
-            name, {"degraded": True, "degraded_at": now, "restarts": hist}
-        )
+        farm.merge_unit_fields(name, {"degraded": True, "degraded_at": now, "restarts": hist})
         append_event("degraded", name, {"restarts": len(hist)})
         return {"unit": name, "action": "degraded", "reason": reason}
 

@@ -161,3 +161,44 @@ def test_backoff_covers_failed_attempt(monkeypatch, tmp_path: Path) -> None:
     assert (td / "error.txt").is_file()
     # lượt kế: bị backoff, không nhặt lại
     assert tcli.pick_candidate() is None
+
+
+def test_triage_fuzzilli_fallback_build(monkeypatch, tmp_path: Path) -> None:
+    """Crash source=fuzzilli, asan 0 repro → thử lại out/fuzzilli/d8 với --fuzzing."""
+    from chromly import paths
+    from chromly.triage import repro as R
+
+    monkeypatch.setattr(paths, "STORE_DIR", tmp_path / "store")
+    ad = tmp_path / "store" / "crashes" / ("a" * 64)
+    ad.mkdir(parents=True)
+    (ad / "program_x.js").write_text("print(1)\n")
+    (ad / "meta.json").write_text('{"unit": "fuzzilli"}')
+    d8a = tmp_path / "out" / "asan" / "d8"
+    d8a.parent.mkdir(parents=True)
+    d8a.write_bytes(b"")
+    d8f = tmp_path / "out" / "fuzzilli" / "d8"
+    d8f.parent.mkdir(parents=True)
+    d8f.write_bytes(b"")
+    monkeypatch.setattr(R, "d8_asan", lambda: d8a)
+    monkeypatch.setattr(R, "d8_fuzzilli", lambda: d8f)
+    monkeypatch.setattr(paths, "V8_ROOT", tmp_path)
+
+    calls: list[tuple] = []
+
+    def fake_run(d8, script, runs=5, timeout=60, extra_flags=None):
+        calls.append((str(d8), tuple(extra_flags or [])))
+        if str(d8) == str(d8f):
+            return {
+                "crashed": 5,
+                "of": 5,
+                "stable": True,
+                "last_rc": 133,
+                "output": "Check failed: x",
+            }
+        return {"crashed": 0, "of": 5, "stable": False, "last_rc": 0, "output": "ok"}
+
+    monkeypatch.setattr(R, "repro_run", fake_run)
+    res = R.run_triage("a" * 12, runs=5)
+    assert res["engine"] == "fuzzilli"
+    assert res["crashed"] == "5/5"
+    assert any("fuzzilli" in c[0] and "--fuzzing" in c[1] for c in calls)

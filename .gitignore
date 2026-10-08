@@ -17,3 +17,4 @@ venv/
 build/ida-db/
 build/libfuzzer/
 tests/INTEL-*/
+v8.prof
