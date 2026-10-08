@@ -28,3 +28,14 @@
 **Files (dự kiến):** `calibration/exploits/<bug-id>/poc-l1-*.js`, `notes.md`, `acceptance/M5-l1.sh`
 **Acceptance:** `bash acceptance/M5-l1.sh` → verifier ≥95% ×200 trên build bug; 0% trên build fixed.
 **Phụ thuộc:** M5-01 (verifier) · M5-02 (lab) · M2-07 (audit loop).
+
+## Status log
+
+- **2026-10-09**: substrate vẫn chưa có. Toàn bộ find mới (maglev family CASE-0020/0022 + t15/e2b,
+  deser family CASE-0019, srcreview CASE-0023/0024) là n-day/check/DoS sau fix-coverage (ADR-013).
+  CSA_DCHECK fuzzilli (`c240647d`/`cdcb9d69`, `GenerateLoadIC_Megamorphic`) = type-confusion-class
+  nhưng flaky ~10-30% + chỉ nổ trên fuzzilli build (dcheck, partition_alloc off, verify_heap) —
+  chưa đủ làm substrate.
+- Hướng #3 (567129324): đã bị fix upstream `c713c92ce0` (Sep 30, "Validate alternative type checks
+  before reusing conversions") — chỉ còn giá trị nếu tìm được consumer/sibling MỚI ngoài fix
+  (srcreview lane đang quét vùng maglev; audit loop tiếp tục).
