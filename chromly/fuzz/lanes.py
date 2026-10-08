@@ -11,8 +11,11 @@ Tương thích watchdog: `farm.down` xoá record trước khi kill → watchdog 
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import pathlib
+import signal
 import sys
 import time
 
@@ -36,6 +39,7 @@ ROTATION: list[str] = [
 ]
 DEFAULT_KEEP = 2
 DEFAULT_SLICE_S = 7200.0
+SWEEP_ENABLED = True  # tests monkeypatch False (sweep quét /proc thật)
 
 
 def state_path():
@@ -86,13 +90,52 @@ def lane_unit(target: str) -> farm.Unit:
     return farm.Unit(name, "libfuzzer", cmd, farm.LOGS_DIR / f"{name}.log")
 
 
+def _sweep_orphans(st: dict) -> list[dict]:
+    """Kill lane process không được track (bài học 08/10: record bị clobber lúc rotate-out
+    → farm.down trả 'unknown' → process mồ côi chạy mãi).
+
+    Chỉ quét khi rotation state tồn tại — tránh quét nhầm trong test/context lạ.
+    """
+    if not SWEEP_ENABLED or not state_path().is_file():
+        return []
+    tracked = set(st.get("lanes", {}))
+    actions: list[dict] = []
+    try:
+        procs = os.listdir("/proc")
+    except OSError:
+        return actions
+    for p in procs:
+        if not p.isdigit():
+            continue
+        try:
+            cmd = (
+                pathlib.Path(f"/proc/{p}/cmdline")
+                .read_bytes()
+                .replace(b"\0", b" ")
+                .decode(errors="replace")
+            )
+        except OSError:
+            continue
+        if "chromly.cli.app" not in cmd or "fuzz lfuzz --unit lfuzz-" not in cmd:
+            continue
+        unit = cmd.split("--unit ")[-1].split()[0]
+        if unit in tracked or unit in ("lfuzz-parser", "lfuzz-wasm"):
+            continue
+        if unit.removeprefix("lfuzz-") not in ROTATION:
+            continue
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(int(p), signal.SIGTERM)
+        actions.append({"unit": unit, "action": "sweep-orphan"})
+    return actions
+
+
 def tick(
     now: float | None = None, keep: int = DEFAULT_KEEP, slice_s: float = DEFAULT_SLICE_S
 ) -> list[dict]:
     """Một nhịp xoay lane. Trả danh sách action đã làm (cho log/aux)."""
     now = now if now is not None else time.time()
     st = _load()
-    actions: list[dict] = []
+    actions: list[dict] = _sweep_orphans(st)
     units = farm._load_state().get("units", {})
 
     # 1) lane hết slice → xoay ra; lane chết không record → rời vòng (record còn → watchdog lo)

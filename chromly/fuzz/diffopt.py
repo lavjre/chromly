@@ -151,6 +151,8 @@ def run_once(d8: Path, program: Path, flags: list[str], timeout: int = 20) -> di
             [str(d8), "--allow-natives-syntax", "--expose-gc", "--fuzzing", *flags, str(program)],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             env=farm._env(),
         )

@@ -132,6 +132,8 @@ def _run_once(d8: Path, test: Path, extra: list[str]) -> tuple[int | None, str]:
             [str(d8), "--allow-natives-syntax", *_extract_run_flags(test), *extra, str(test)],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=TIMEOUT_S,
         )
         return proc.returncode, proc.stdout + proc.stderr

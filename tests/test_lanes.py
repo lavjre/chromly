@@ -38,6 +38,7 @@ def _fake_farm(monkeypatch, tmp_path: Path, alive_units: dict | None = None):
     monkeypatch.setattr(lanes.engine, "engine_bin", lambda t: tmp_path / "engine.bin")
     (tmp_path / "engine.bin").write_bytes(b"")
     monkeypatch.setattr(lanes, "state_path", lambda: tmp_path / "fuzz" / "lane-rotation.json")
+    monkeypatch.setattr(lanes, "SWEEP_ENABLED", False)
     return state, started, stopped
 
 

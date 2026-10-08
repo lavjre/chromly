@@ -124,7 +124,12 @@ def lfreplay_once(unit: str) -> dict:
         chunk = [str(f) for f in files[i : i + BATCH]]
         try:
             proc = subprocess.run(
-                [str(binary), *chunk], capture_output=True, text=True, timeout=600
+                [str(binary), *chunk],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=600,
             )
             out = proc.stdout + proc.stderr
             if proc.returncode != 0 or "ERROR: AddressSanitizer" in out:
