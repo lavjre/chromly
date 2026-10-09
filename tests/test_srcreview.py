@@ -102,3 +102,39 @@ def test_srcreview_flow_files_crash(monkeypatch, tmp_path: Path) -> None:
     assert idx["src/x.cc"]["crashes"] == 1
     # scan lần sau bỏ qua file đã review
     assert SR.run_scan(top=5, limit=1) == []
+
+
+def test_scan_retries_failed_once(monkeypatch, tmp_path: Path) -> None:
+    """failed → retry 1 lần; reviewed/attempts≥2 → skip (bài học timeout 09/10)."""
+    from chromly.intel import srcreview as SR
+
+    monkeypatch.setattr(paths, "STORE_DIR", tmp_path / "store")
+    monkeypatch.setattr(paths, "V8_ROOT", tmp_path / "v8")
+    monkeypatch.setattr(
+        SR,
+        "hotspots",
+        lambda top=100: [{"path": "src/a.cc", "count": 3, "surfaces": ["jit"], "size_kb": 1}],
+    )
+    calls: list[str] = []
+
+    def fake_review(path, limit=3):
+        calls.append(path)
+        return {"path": path, "status": "reviewed", "generated": 0, "crashes": 0}
+
+    monkeypatch.setattr(SR, "run_srcreview", fake_review)
+
+    # failed lần 1 (chưa có attempts) → retry
+    SR.save_index({"src/a.cc": {"slug": "s", "status": "failed"}})
+    SR.run_scan(top=1)
+    assert calls == ["src/a.cc"]
+
+    # failed lần 2 (attempts=2) → skip
+    calls.clear()
+    SR.save_index({"src/a.cc": {"slug": "s", "status": "failed", "attempts": 2}})
+    SR.run_scan(top=1)
+    assert calls == []
+
+    # reviewed → skip
+    SR.save_index({"src/a.cc": {"slug": "s", "status": "reviewed", "attempts": 1}})
+    SR.run_scan(top=1)
+    assert calls == []

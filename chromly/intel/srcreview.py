@@ -207,11 +207,11 @@ def run_srcreview(path: str, limit: int = 3) -> dict:
             cwd=scratch,
             capture_output=True,
             text=True,
-            timeout=1800,
+            timeout=3600,
         )
         output = proc.stdout + "\n" + proc.stderr
     except subprocess.TimeoutExpired:
-        output = "(timeout 1800s)"
+        output = "(timeout 3600s)"
     wall = round(time.monotonic() - t0, 1)
     (archive / "agent-output.log").write_text(output)
 
@@ -259,10 +259,12 @@ def run_srcreview(path: str, limit: int = 3) -> dict:
     results = run_src_tests(slug)
 
     idx = load_index()
+    prev = idx.get(path, {})
     idx[path] = {
         "slug": slug,
         "ts": time.time(),
         "status": status,
+        "attempts": int(prev.get("attempts", 0)) + 1,
         "generated": results["generated"],
         "crashes": results["crashes"],
         "wall_s": wall,
@@ -278,14 +280,24 @@ def run_srcreview(path: str, limit: int = 3) -> dict:
     }
 
 
+def _should_skip(idx: dict, path: str) -> bool:
+    """Reviewed → skip; failed → retry tối đa 1 lần (bài học timeout 1800s 09/10)."""
+    rec = idx.get(path)
+    if rec is None:
+        return False
+    if rec.get("status") != "failed":
+        return True
+    return int(rec.get("attempts", 1)) >= 2
+
+
 def run_scan(top: int = 2, limit: int = 3) -> list[dict]:
-    """Chọn top hotspot chưa review → chạy lần lượt (aux loop)."""
+    """Chọn top hotspot chưa review (hoặc failed <2 lần) → chạy lần lượt (aux loop)."""
     idx = load_index()
     out = []
     for r in hotspots(top=100):
         if len(out) >= top:
             break
-        if r["path"] in idx:
+        if _should_skip(idx, r["path"]):
             continue
         out.append(run_srcreview(r["path"], limit=limit))
     return out
