@@ -43,6 +43,21 @@ def usage() -> dict:
         con.close()
 
 
+def cost_per_case(days: int = 7) -> dict:
+    """Chi phí / case trong N ngày: tổng cost_est ÷ số case tạo mới (kể cả case no-bug)."""
+    con = db.ensure_db()
+    try:
+        cost = _usage(con, f"datetime('now', '-{int(days)} days')")
+        row = con.execute(
+            "SELECT COUNT(*) AS n FROM cases WHERE created >= datetime('now', ?)",
+            (f"-{int(days)} days",),
+        ).fetchone()
+        n = int(row["n"] or 0)
+        return {"days": days, "cost": cost, "cases": n, "per_case": (cost / n) if n else 0.0}
+    finally:
+        con.close()
+
+
 def tier() -> str:
     """Ưu tiên: window nhà cung cấp (tháng → tuần/5h) là hard limit; cap ngày là policy mềm."""
     u = usage()

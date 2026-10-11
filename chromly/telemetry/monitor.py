@@ -542,9 +542,13 @@ def info_snapshot() -> dict:
         from chromly.orchestrator import budget
 
         u = budget.usage()
-        snap["budget"] = {"day": u.get("day", 0), "tier": budget.tier()}
+        snap["budget"] = {
+            "day": u.get("day", 0),
+            "tier": budget.tier(),
+            "cpc": budget.cost_per_case(),
+        }
     except Exception:  # noqa: BLE001
-        snap["budget"] = {"day": 0, "tier": "?"}
+        snap["budget"] = {"day": 0, "tier": "?", "cpc": None}
     try:
         snap["disk_free_gb"] = shutil.disk_usage(str(paths.REPO_ROOT)).free // (1 << 30)
     except OSError:
@@ -619,7 +623,11 @@ def render_info(color: bool | None = None) -> str:
     lines.append("BUILD   " + " · ".join(s["builds"] or ["—"]))
     if s.get("tot"):
         lines.append("TOT     " + s["tot"])
-    lines.append(f"BUDGET  day ${s['budget']['day']:.2f} · tier={s['budget']['tier']}")
+    cpc = (s.get("budget") or {}).get("cpc")
+    cpc_txt = ""
+    if cpc and cpc.get("cases"):
+        cpc_txt = f" · 7d ${cpc['cost']:.2f}/{cpc['cases']} case = ${cpc['per_case']:.2f}/case"
+    lines.append(f"BUDGET  day ${s['budget']['day']:.2f} · tier={s['budget']['tier']}{cpc_txt}")
     lines.append(f"DISK    {s['disk_free_gb']}G free · alerts(unacked)={s['alerts']}")
     lines.append("── event gần nhất ──")
     for e in s["events"]:

@@ -47,6 +47,85 @@ def log_event(case_id: str, event: str, detail: dict | None = None) -> None:
         )
 
 
+_SRC_RE = re.compile(r"src/[\w/+-]+\.(?:cc|h|tq)")
+
+
+def siblings_for(crash: dict) -> list[dict]:
+    """Crash cùng cluster: cùng stack_norm (fallback cùng fault_type khi norm NULL).
+
+    Gom sibling vào 1 case (kiểu cluster của Quarkslab) — agent thấy cả cụm;
+    DB cũng đã chặn case trùng stack_norm nên không lo đẻ case song song.
+    """
+    con = db.ensure_db()
+    try:
+        if crash.get("stack_norm"):
+            rows = con.execute(
+                "SELECT hash, fault_type, severity, source, state FROM crashes "
+                "WHERE stack_norm = ? AND id != ? AND state != 'fp' ORDER BY id DESC LIMIT 10",
+                (crash["stack_norm"], crash["id"]),
+            ).fetchall()
+        else:
+            rows = con.execute(
+                "SELECT hash, fault_type, severity, source, state FROM crashes "
+                "WHERE fault_type = ? AND id != ? AND state != 'fp' AND stack_norm IS NULL "
+                "ORDER BY id DESC LIMIT 10",
+                (crash["fault_type"], crash["id"]),
+            ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        con.close()
+
+
+def prior_context(crash: dict) -> str:
+    """Context tái sử dụng (RAG-lite): case cũ chạm cùng source file + S1 verdict (nếu có)."""
+    tri = paths.STORE_DIR / "triage" / crash["hash"]
+    txt = ""
+    for name in ("asan.txt", "symbols.txt"):
+        f = tri / name
+        if f.is_file():
+            txt += f.read_text(errors="replace")
+    files: list[str] = []
+    for m in _SRC_RE.finditer(txt):
+        p = m.group(0)
+        if p not in files:
+            files.append(p)
+        if len(files) >= 3:
+            break
+    parts: list[str] = []
+    hits: list[str] = []
+    cdir = cases_dir()
+    if files and cdir.is_dir():
+        for cd in sorted(cdir.glob("CASE-*")):
+            v = cd / "VERDICT.md"
+            if not v.is_file():
+                continue
+            try:
+                text = v.read_text(errors="replace")
+            except OSError:
+                continue
+            for p in files:
+                if p in text:
+                    first = next((ln for ln in text.splitlines() if ln.startswith("verdict:")), "?")
+                    hits.append(f"- {cd.name}: {first} (nhắc {p})")
+                    break
+            if len(hits) >= 3:
+                break
+    if hits:
+        parts.append("## Case tương tự trước đây\n" + "\n".join(hits))
+    s1f = paths.STORE_DIR / "s1" / f"{crash['hash']}.json"
+    if s1f.is_file():
+        try:
+            r = json.loads(s1f.read_text())
+            parts.append(
+                "## S1 (advisory)\n"
+                f"- exploitable={r.get('exploitable')} ladder={r.get('ladder')} "
+                f"impact={r.get('impact')} reachable={r.get('reachable')} next={r.get('next')}"
+            )
+        except json.JSONDecodeError:
+            pass
+    return "\n\n".join(parts)
+
+
 def new_case(crash_hash: str | None = None, source: str = "manual") -> dict:
     """Tạo case từ crash (hash prefix) hoặc rỗng. Trả case meta."""
     cid = _next_id()
@@ -55,6 +134,8 @@ def new_case(crash_hash: str | None = None, source: str = "manual") -> dict:
         sub.mkdir(parents=True, exist_ok=True)
 
     crash = None
+    siblings: list[dict] = []
+    context = ""
     if crash_hash:
         con = db.ensure_db()
         try:
@@ -66,6 +147,8 @@ def new_case(crash_hash: str | None = None, source: str = "manual") -> dict:
         if row is None:
             raise ValueError(f"không thấy crash {crash_hash}")
         crash = dict(row)
+        siblings = siblings_for(crash)
+        context = prior_context(crash)
         src = paths.STORE_DIR / "triage" / crash["hash"]
         for f in TRIAGE_FILES:
             if (src / f).is_file():
@@ -86,6 +169,10 @@ def new_case(crash_hash: str | None = None, source: str = "manual") -> dict:
         "build_rev": crash["build_rev"] if crash else None,
         "created": time.time(),
         "state": "BUNDLED",
+        "siblings": [
+            {"hash": s["hash"][:12], "severity": s["severity"], "state": s["state"]}
+            for s in siblings
+        ],
     }
     (d / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2))
     (d / "notes.md").write_text("# notes\n\n(hypothesis | evidence | result)\n")
@@ -98,7 +185,7 @@ def new_case(crash_hash: str | None = None, source: str = "manual") -> dict:
             else "- (chưa gắn crash)\n"
         )
     )
-    (d / "brief.md").write_text(brief_text(meta))
+    (d / "brief.md").write_text(brief_text(meta, context))
 
     con = db.ensure_db()
     try:
@@ -154,9 +241,19 @@ def archive_case(case_id: str) -> dict:
     return {"case": case_id, "status": "archived", "tarball": str(tarball)}
 
 
-def brief_text(meta: dict) -> str:
+def brief_text(meta: dict, context: str = "") -> str:
     v8 = paths.V8_ROOT
     scratch = Path("/tmp/opencode/chromly-case") / meta["id"]
+    sib = meta.get("siblings") or []
+    sib_txt = ""
+    if sib:
+        note = "(cân nhắc repro thêm — đặc biệt out/fuzzilli/d8 + --fuzzing nếu flaky/fuzzilli)"
+        sib_txt = (
+            "## Siblings (cùng cluster — cùng stack_norm)\n"
+            + "\n".join(f"- {s['hash']} (sev {s['severity']}, {s['state']})" for s in sib)
+            + f"\n{note}\n\n"
+        )
+    ctx_txt = f"\n{context}\n" if context else ""
     return f"""# Case {meta["id"]} — brief
 
 ## Crash
@@ -164,13 +261,13 @@ def brief_text(meta: dict) -> str:
 - class: {meta.get("fault_type")} · score: {meta.get("severity")}
 - build rev: {meta.get("build_rev")}
 
-## Tài nguyên (đường dẫn tuyệt đối)
+{sib_txt}## Tài nguyên (đường dẫn tuyệt đối)
 - Workdir (đọc/ghi): {scratch}
 - V8 source (chỉ đọc): {v8}
 - d8 builds: {v8}/out/asan/d8 (ASAN+verify_heap) · {v8}/out/calib/d8 (ASAN+dcheck)
   · {v8}/out/fuzzilli/d8 (REPRL)
 - Crash artifacts: repro.js · asan.txt · symbols.txt (trong workdir)
-
+{ctx_txt}
 ## Nhiệm vụ
 1. Xác nhận repro: `out/asan/d8 --allow-natives-syntax repro.js` ×5 — ghi tỉ lệ thật.
 2. Map root cause: frame trong asan.txt → Grep source V8 → file:line + giải thích cơ chế.

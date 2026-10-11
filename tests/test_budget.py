@@ -52,3 +52,33 @@ def test_check_case(monkeypatch, tmp_path: Path) -> None:
     _setup(monkeypatch, tmp_path)
     assert budget.check_case(est_cost=1.5)["allow"] is True
     assert budget.check_case(est_cost=3.0)["allow"] is False
+
+
+def test_cost_per_case(monkeypatch, tmp_path: Path) -> None:
+    from chromly import paths
+    from chromly.store import db
+
+    monkeypatch.setattr(paths, "STORE_DIR", tmp_path / "store")
+    monkeypatch.setattr(paths, "DB_PATH", tmp_path / "store" / "chromly.db")
+    con = db.ensure_db()
+    with con:
+        con.execute("INSERT INTO runs (cost_est, created) VALUES (1.5, datetime('now', '-1 day'))")
+        con.execute(
+            "INSERT INTO runs (cost_est, created) VALUES (0.5, datetime('now', '-30 days'))"
+        )
+        for cid, when in (
+            ("CASE-0001", "datetime('now')"),
+            ("CASE-0002", "datetime('now')"),
+            ("CASE-0003", "datetime('now', '-30 days')"),
+        ):
+            con.execute(
+                f"INSERT INTO cases (id, state, created) VALUES (?, 'VERDICT', {when})",
+                (cid,),
+            )
+    con.close()
+    from chromly.orchestrator import budget
+
+    r = budget.cost_per_case(days=7)
+    assert r["cost"] == 1.5
+    assert r["cases"] == 2
+    assert abs(r["per_case"] - 0.75) < 1e-9

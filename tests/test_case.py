@@ -405,3 +405,67 @@ def test_auto_case_budget_deny_archives(monkeypatch, tmp_path: Path) -> None:
     assert cid
     assert pipeline.load_case(cid)["state"] == "ARCHIVED"
     assert (pipeline.cases_dir() / "_archive" / f"{cid}.tar.gz").is_file()
+
+
+def test_siblings_grouped_into_case(monkeypatch, tmp_path: Path) -> None:
+    """Crash cùng stack_norm → gom vào meta.siblings + brief; fp bị loại."""
+    _setup(monkeypatch, tmp_path)
+    con = db.ensure_db()
+    with con:
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, state, stack_norm) "
+            "VALUES (?, 'type-confusion-dcheck', 3, 'raw', 'NORM1')",
+            ("a" * 64,),
+        )
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, state, stack_norm) "
+            "VALUES (?, 'type-confusion-dcheck', 3, 'raw', 'NORM1')",
+            ("b" * 64,),
+        )
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, state, stack_norm) "
+            "VALUES (?, 'type-confusion-dcheck', 3, 'fp', 'NORM1')",
+            ("c" * 64,),
+        )
+    con.close()
+    meta = pipeline.new_case("a" * 12)
+    assert [s["hash"] for s in meta["siblings"]] == ["b" * 12]
+    brief = (pipeline.case_dir(meta["id"]) / "brief.md").read_text()
+    assert "Siblings" in brief and ("b" * 12) in brief and ("c" * 12) not in brief
+
+
+def test_prior_context_mentions_old_case(monkeypatch, tmp_path: Path) -> None:
+    """prior_context: case cũ nhắc cùng file nguồn + S1 verdict vào brief."""
+    _setup(monkeypatch, tmp_path)
+    # case cũ có verdict nhắc file
+    old = paths.CASES_DIR / "CASE-0001"
+    old.mkdir(parents=True)
+    (old / "VERDICT.md").write_text("verdict: no-bug\nroot cause in src/maglev/foo.cc:12\n")
+    # crash mới: triage output trỏ cùng file
+    con = db.ensure_db()
+    with con:
+        con.execute(
+            "INSERT INTO crashes (hash, fault_type, severity, state) VALUES (?, 'other', 3, 'raw')",
+            ("d" * 64,),
+        )
+    con.close()
+    tri = paths.STORE_DIR / "triage" / ("d" * 64)
+    tri.mkdir(parents=True)
+    (tri / "asan.txt").write_text("# Fatal error in src/maglev/foo.cc, line 42\n")
+    s1 = paths.STORE_DIR / "s1"
+    s1.mkdir(parents=True)
+    (s1 / (("d" * 64) + ".json")).write_text(
+        json.dumps(
+            {
+                "exploitable": 0.5,
+                "ladder": 0.4,
+                "impact": "dos",
+                "reachable": "web",
+                "next": "close",
+            }
+        )
+    )
+    meta = pipeline.new_case("d" * 12)
+    brief = (pipeline.case_dir(meta["id"]) / "brief.md").read_text()
+    assert "CASE-0001" in brief and "src/maglev/foo.cc" in brief
+    assert "S1 (advisory)" in brief
