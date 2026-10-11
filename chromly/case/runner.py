@@ -96,12 +96,17 @@ def run_case(
     model: str | None = None,
     resume_session: str | None = None,
     count_resume: bool = False,
+    force: bool = False,
 ) -> dict:
     from chromly.case.pipeline import set_state
 
-    # budget — high_score lấy thật từ severity của crash gắn case (không hardcode)
-    high = _case_high_score(case_id)
-    decision = budget.check_case(est_cost=budget.CAPS["case"], high_score=high)
+    # budget — high_score lấy thật từ severity của crash gắn case (không hardcode).
+    # force=True: operator override cho case thủ công (ghi log, vẫn chịu cap cứng nhà cung cấp).
+    if force:
+        decision = {"allow": True, "model": budget.FLASH_MODEL, "note": "forced (operator)"}
+    else:
+        high = _case_high_score(case_id)
+        decision = budget.check_case(est_cost=budget.CAPS["case"], high_score=high)
     if not decision.get("allow"):
         return {"case": case_id, "status": "budget-deny", "detail": decision}
     model = model or decision.get("model") or budget.FLASH_MODEL
@@ -499,6 +504,7 @@ def run_case_cmd(args: argparse.Namespace) -> int:
             args.case_id,
             max_wall=wall_arg * 60.0 if wall_arg else MAX_WALL_DEFAULT,
             resume_session=getattr(args, "resume", None),
+            force=getattr(args, "force", False),
         )
         print(json.dumps(res, ensure_ascii=False))
         return 0 if res.get("status") in ("verdict", "timeout") else 1

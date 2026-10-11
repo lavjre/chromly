@@ -469,3 +469,19 @@ def test_prior_context_mentions_old_case(monkeypatch, tmp_path: Path) -> None:
     brief = (pipeline.case_dir(meta["id"]) / "brief.md").read_text()
     assert "CASE-0001" in brief and "src/maglev/foo.cc" in brief
     assert "S1 (advisory)" in brief
+
+
+def test_run_case_force_bypasses_budget(monkeypatch, tmp_path: Path) -> None:
+    """--force (case thủ công): bỏ qua budget gate; vẫn đi tiếp pipeline (no-opencode nếu thiếu)."""
+    _setup(monkeypatch, tmp_path)
+    meta = pipeline.new_case(None)
+    monkeypatch.setattr(
+        budget,
+        "check_case",
+        lambda est_cost=2.0, high_score=True: {"allow": False, "reason": "test"},
+    )
+    from chromly.orchestrator import agents
+
+    monkeypatch.setattr(agents, "find_opencode", lambda: None)
+    res = runner.run_case(meta["id"], max_wall=1, force=True)
+    assert res["status"] == "no-opencode"  # không phải budget-deny

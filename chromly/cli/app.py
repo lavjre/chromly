@@ -285,6 +285,7 @@ def main(argv: list[str] | None = None) -> int:
         "--wall", type=float, default=None, help="wall tối đa (phút); mặc định 360=6h"
     )
     p_cr.add_argument("--resume", default=None, help="session id để resume")
+    p_cr.add_argument("--force", action="store_true", help="bỏ qua budget gate (case thủ công)")
     p_carch = case_sub.add_parser("archive", help="nén case đã kết thúc → _archive/ + ARCHIVED")
     p_carch.add_argument("case_id")
     case_sub.add_parser("list", help="liệt kê cases")
