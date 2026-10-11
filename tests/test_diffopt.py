@@ -211,3 +211,24 @@ def test_diffopt_skips_bad_file(monkeypatch, tmp_path: Path) -> None:
     s = diffopt.run_diffopt(limit=3, axes=[("no-opt", ["--no-opt"])])
     assert s["sampled"] == 3
     assert diffopt._load_state()["cursor"].startswith("program_2")
+
+
+def test_config_noise_fp(tmp_path: Path) -> None:
+    """FP #7 stack-depth + #8 worker-output; diff thật thì không bị lọc."""
+    from chromly.fuzz import diffopt as D
+
+    p = tmp_path / "p.js"
+    p.write_text("rec();\n")
+    a = {"rc": 0, "out": ""}
+    b = {"rc": 0, "out": "RangeError: Maximum call stack size exceeded"}
+    assert D._config_noise_fp(p, a, b) is True
+
+    p.write_text("new Worker('x', {type:'function'});\n")
+    a2 = {"rc": 0, "out": ""}
+    b2 = {"rc": 0, "out": "undefined:N: SyntaxError: bad JSON"}
+    assert D._config_noise_fp(p, a2, b2) is True
+
+    p.write_text("print(1);\n")
+    a3 = {"rc": 0, "out": "1"}
+    b3 = {"rc": 0, "out": "2"}
+    assert D._config_noise_fp(p, a3, b3) is False

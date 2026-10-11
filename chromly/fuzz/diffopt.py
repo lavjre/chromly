@@ -143,6 +143,38 @@ def _dedupe_blocks(out: str) -> str:
     return "\n\n".join(kept)
 
 
+STACK_OVERFLOW_MARKER = "Maximum call stack size exceeded"
+_WORKER_RE = re.compile(r"\bnew Worker\b")
+
+
+def _config_noise_fp(program: Path, a: dict, b: dict) -> bool:
+    """True nếu diff chỉ là nhiễu config, không phải miscompile:
+
+    #7 stack-depth: 1 bên tràn stack, bên kia không — frame size khác nhau giữa tier
+       đổi độ sâu đệ quy (FP thật: ca7b1ceb/aa373809/3f698983, 10/10).
+    #8 worker-output: program dùng Worker, 1 bên in uncaught-error còn bên kia trống —
+       tốc độ compile khác nhau quyết định worker kịp in hay không (FP 10/10).
+    """
+    if (STACK_OVERFLOW_MARKER in a["out"]) != (STACK_OVERFLOW_MARKER in b["out"]):
+        return True
+    try:
+        src = program.read_text(errors="replace")
+    except OSError:
+        return False
+    if _WORKER_RE.search(src):
+
+        def _blank(r: dict) -> bool:
+            return r["out"].strip() == ""
+
+        def _one_err(r: dict) -> bool:
+            out = r["out"].strip()
+            return bool(out) and "\n\n" not in out and "Error" in out
+
+        if (_blank(a) and _one_err(b)) or (_blank(b) and _one_err(a)):
+            return True
+    return False
+
+
 def run_once(d8: Path, program: Path, flags: list[str], timeout: int = 20) -> dict:
     # `--fuzzing`: corpus fuzzilli sinh cho môi trường này (bỏ check prepare-optimization,
     # đúng như fuzzilli chạy) — thiếu nó là warning-spam/FATAL giả (đã gặp 2026-10-01).
@@ -322,6 +354,9 @@ def run_diffopt(
             if len({_sig(r) for r in runs_b}) != 1:
                 continue
             if _sig(runs_a[0]) == _sig(runs_b[0]):
+                continue
+            # FP lớp #7/#8: nhiễu config (stack-depth / worker output) — xem _config_noise_fp
+            if _config_noise_fp(prog, runs_a[0], runs_b[0]):
                 continue
             key = f"{hashlib.sha256(prog.read_bytes()).hexdigest()[:24]}:{axis_name}"
             if key in found:
