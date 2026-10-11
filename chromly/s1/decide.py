@@ -332,7 +332,16 @@ def scan(limit: int = 2) -> list[dict]:
     if not crashes.is_dir():
         return []
     done = {p.stem for p in s1_dir().glob("*.json")} if s1_dir().is_dir() else set()
-    cands = [d for d in crashes.iterdir() if d.is_dir() and d.name not in done]
+    fp: set[str] = set()
+    with contextlib.suppress(Exception):
+        from chromly.store import db
+
+        con = db.ensure_db()
+        try:
+            fp = {r["hash"] for r in con.execute("SELECT hash FROM crashes WHERE state = 'fp'")}
+        finally:
+            con.close()
+    cands = [d for d in crashes.iterdir() if d.is_dir() and d.name not in done and d.name not in fp]
     cands.sort(key=lambda d: d.stat().st_mtime, reverse=True)
     out: list[dict] = []
     for d in cands[:limit]:

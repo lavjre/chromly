@@ -138,3 +138,39 @@ def test_scan_retries_failed_once(monkeypatch, tmp_path: Path) -> None:
     SR.save_index({"src/a.cc": {"slug": "s", "status": "reviewed", "attempts": 1}})
     SR.run_scan(top=1)
     assert calls == []
+
+
+def test_hotspots_excludes_arch_paths(monkeypatch, tmp_path: Path) -> None:
+    """File arch-specific (arm64/riscv/s390...) không review — builds của ta là x64."""
+    from chromly.intel import srcreview as SR
+
+    monkeypatch.setattr(paths, "STORE_DIR", tmp_path / "store")
+    monkeypatch.setattr(paths, "V8_ROOT", tmp_path / "v8")
+    rec = tmp_path / "store" / "recon"
+    rec.mkdir(parents=True)
+    (rec / "archaeology-v8.json").write_text(
+        json.dumps(
+            {
+                "records": [
+                    {"surface": "jit", "paths": ["src/codegen/arm64/macro-assembler-arm64.cc"]},
+                    {"surface": "jit", "paths": ["src/maglev/riscv/x.cc"]},
+                    {
+                        "surface": "jit",
+                        "paths": ["src/compiler/backend/s390/code-generator-s390.cc"],
+                    },
+                    {"surface": "jit", "paths": ["src/maglev/good.cc"]},
+                ]
+            }
+        )
+    )
+    for p in (
+        "src/codegen/arm64/macro-assembler-arm64.cc",
+        "src/maglev/riscv/x.cc",
+        "src/compiler/backend/s390/code-generator-s390.cc",
+        "src/maglev/good.cc",
+    ):
+        f = tmp_path / "v8" / p
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("// x")
+    rows = SR.hotspots(top=10)
+    assert [r["path"] for r in rows] == ["src/maglev/good.cc"]

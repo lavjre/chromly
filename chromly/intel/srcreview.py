@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -31,6 +32,8 @@ SCRATCH_ROOT = Path("/tmp/opencode/chromly-srcreview")
 CODE_SUFFIXES = (".cc", ".h", ".tq", ".py")
 # d8 = test shell (không reachable từ Chrome), flags = parsing của embedder
 EXCLUDE_PREFIXES = ("src/d8/", "src/flags/")
+# Arch-specific: builds của ta là x64 — bug arch khác không repro được (và tốn budget)
+_ARCH_RE = re.compile(r"(^|/)(arm64|riscv|s390|ppc|loong64|mips|ia32)(/|[-_.])")
 
 SRC_PROMPT = """\
 Bạn là source-review lane của chromly — săn bug V8 còn sống trong source hiện tại.
@@ -87,6 +90,8 @@ def hotspots(top: int = 15) -> list[dict]:
             if not isinstance(path, str) or not path.startswith("src/"):
                 continue
             if path.startswith(EXCLUDE_PREFIXES):
+                continue
+            if _ARCH_RE.search(path):
                 continue
             if not path.endswith(CODE_SUFFIXES):
                 continue
