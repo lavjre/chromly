@@ -189,3 +189,31 @@ def test_guard_next() -> None:
     assert decide._guard_next("report", "flag-gated") == ("analyze-more", True)
     assert decide._guard_next("report", "web") == ("report", False)
     assert decide._guard_next("close", "natives") == ("close", False)
+
+
+def test_scan_picks_newest_unscored(monkeypatch, tmp_path: Path) -> None:
+    """scan: mới nhất trước, bỏ crash đã chấm, tôn trọng limit."""
+    import os
+
+    _setup(monkeypatch, tmp_path)
+    crashes = tmp_path / "store" / "crashes"
+    os.utime(crashes / H, (50.0, 50.0))  # H (từ _setup) cũ nhất
+    for name, mt in (("b" * 64, 300.0), ("c" * 64, 200.0), ("d" * 64, 100.0)):
+        d = crashes / name
+        d.mkdir(parents=True)
+        os.utime(d, (mt, mt))
+    s1 = tmp_path / "store" / "s1"
+    s1.mkdir(parents=True)
+    (s1 / (("b" * 64) + ".json")).write_text("{}")  # b đã chấm
+
+    monkeypatch.setattr(decide, "server_up", lambda *a, **k: True)
+    scored: list[str] = []
+
+    def fake_triage(h):
+        scored.append(h)
+        return {"hash": h, "exploitable": 0.1, "impact": "dos", "reachable": "web", "next": "close"}
+
+    monkeypatch.setattr(decide, "triage_crash", fake_triage)
+    out = decide.scan(limit=2)
+    assert scored == ["c" * 64, "d" * 64]  # mới nhất trước; b bị bỏ; limit=2
+    assert len(out) == 2

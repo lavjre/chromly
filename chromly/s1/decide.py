@@ -320,6 +320,29 @@ def triage_crash(hash_or_prefix: str) -> dict:
     return out
 
 
+def scan(limit: int = 2) -> list[dict]:
+    """Chấm các crash mới nhất chưa có kết quả S1 (auto cho `chromly info`).
+
+    Sort theo mtime giảm dần; bỏ qua crash đã có store/s1/<hash>.json. Server phải
+    sống (aux `s1`); 1 crash lỗi không chặn crash sau.
+    """
+    if not server_up():
+        return []
+    crashes = paths.STORE_DIR / "crashes"
+    if not crashes.is_dir():
+        return []
+    done = {p.stem for p in s1_dir().glob("*.json")} if s1_dir().is_dir() else set()
+    cands = [d for d in crashes.iterdir() if d.is_dir() and d.name not in done]
+    cands.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+    out: list[dict] = []
+    for d in cands[:limit]:
+        try:
+            out.append(triage_crash(d.name))
+        except Exception as exc:  # noqa: BLE001 — 1 crash lỗi không chặn lượt sau
+            print(f"s1 scan: {d.name[:12]} lỗi: {type(exc).__name__}: {exc}", flush=True)
+    return out
+
+
 def load_result(hash_or_prefix: str) -> dict | None:
     if not s1_dir().is_dir():
         return None
@@ -353,6 +376,22 @@ def run_s1_cmd(args) -> int:
         import subprocess
 
         return subprocess.call([str(binp)], env=env)
+    if sub == "scan":
+        loop = getattr(args, "loop", False)
+        interval = getattr(args, "interval", 1800.0)
+        while True:
+            res = scan(limit=getattr(args, "limit", 2))
+            for r in res:
+                ex = r.get("exploitable")
+                ex_s = f"{ex:.2f}" if isinstance(ex, (int, float)) else "—"
+                print(
+                    f"[s1scan] {r['hash'][:12]}: exploitable={ex_s} "
+                    f"impact={r.get('impact')} reachable={r.get('reachable')} next={r.get('next')}",
+                    flush=True,
+                )
+            if not loop:
+                return 0
+            time.sleep(interval)
     if sub == "check":
         if not available():
             print("s1: thiếu laya — cài: uv pip install --python .venv/bin/python laya")
