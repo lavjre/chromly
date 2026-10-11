@@ -21,7 +21,7 @@ cleanup() {
   [ "$reverted" = 1 ] && return 0
   reverted=1
   echo "── revert + rebuild..."
-  git -C "$V8" checkout -- src/ 2>/dev/null || true
+  git -C "$V8" checkout -f HEAD -- src/ 2>/dev/null || true
   if [ "${NO_REBUILD:-0}" != "1" ]; then
     (cd "$V8" && PATH="$HOME/tools/depot_tools:$PATH" autoninja -C "$OUT" d8 >/dev/null 2>&1) \
       && echo "── revert rebuild OK" || echo "!! revert rebuild FAIL — kiểm tra tay"
@@ -30,7 +30,17 @@ cleanup() {
 trap cleanup EXIT TERM INT
 
 echo "── apply fix $FIX"
-git -C "$MIRROR" format-patch -1 "$FIX" --stdout | git -C "$V8" apply --include='src/*'
+patch_file=$(mktemp /tmp/fixcheck-patch.XXXXXX)
+git -C "$MIRROR" format-patch -1 "$FIX" --stdout > "$patch_file"
+if ! git -C "$V8" apply --include='src/*' "$patch_file" 2>/dev/null; then
+  # tree drift: snapshot cũ hơn fix → --3way (merge với base của fix)
+  echo "   apply trực tiếp fail (drift) → thử --3way"
+  git -C "$V8" apply --3way --include='src/*' "$patch_file" 2>&1 | tail -3
+  if grep -rq --include='*.cc' --include='*.h' --include='*.tq' "^<<<<<<< " "$V8/src" 2>/dev/null; then
+    echo "!! --3way để lại conflict markers — resolve tay rồi chạy lại (cleanup revert nguyên trạng)"
+    exit 1
+  fi
+fi
 echo "── build $OUT (có thể lâu)"
 (cd "$V8" && PATH="$HOME/tools/depot_tools:$PATH" autoninja -C "$OUT" d8)
 
