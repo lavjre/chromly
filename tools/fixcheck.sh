@@ -27,7 +27,7 @@ cleanup() {
       && echo "── revert rebuild OK" || echo "!! revert rebuild FAIL — kiểm tra tay"
   fi
 }
-trap cleanup EXIT
+trap cleanup EXIT TERM INT
 
 echo "── apply fix $FIX"
 git -C "$MIRROR" format-patch -1 "$FIX" --stdout | git -C "$V8" apply --include='src/*'
