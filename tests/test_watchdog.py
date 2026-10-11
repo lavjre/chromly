@@ -104,3 +104,16 @@ def test_case_stale_check_skips_fresh(monkeypatch, tmp_path: Path) -> None:
     (d / "meta.json").write_text(json.dumps({"id": "CASE-0002", "state": "RUNNING"}))
     now = time.time()
     assert watchdog._case_stale_check(now) == []
+
+
+def test_aux_check_skips_unknown_name(monkeypatch) -> None:
+    """Record aux lạ (không có trong AUX_SPECS) → bỏ qua, không crash (bài học 11/10)."""
+    from chromly.fuzz import watchdog
+    from chromly.orchestrator import supervisor
+
+    state = {"aux": {"ghost-aux": {"pid": 999999}, "watchdog": {"pid": 1}}}
+    called: list[str] = []
+    monkeypatch.setattr(supervisor, "_spawn_aux", lambda name: called.append(name) or {"pid": 1})
+    actions = watchdog._aux_check(state)
+    assert called == []
+    assert actions == []

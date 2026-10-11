@@ -177,6 +177,10 @@ def _aux_check(state: dict) -> list[dict]:
     for name, rec in list(aux.items()):
         if name == "watchdog":
             continue
+        if name not in supervisor.AUX_SPECS:
+            # record lạ (aux thêm/bớt giữa các version code) — không respawn, không crash
+            # (bài học 11/10: watchdog cũ KeyError 's1scan' → chết, mất self-heal cả stack)
+            continue
         if not farm._alive(rec):
             new_rec = supervisor._spawn_aux(name)
             aux[name] = new_rec
