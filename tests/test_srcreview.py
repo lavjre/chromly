@@ -174,3 +174,57 @@ def test_hotspots_excludes_arch_paths(monkeypatch, tmp_path: Path) -> None:
         f.write_text("// x")
     rows = SR.hotspots(top=10)
     assert [r["path"] for r in rows] == ["src/maglev/good.cc"]
+
+
+def test_fix_regions_from_mirror(monkeypatch, tmp_path: Path) -> None:
+    """fix_regions: hunk ranges của fix commit → cửa sổ quanh vùng sửa (slicing)."""
+    import os
+    import subprocess
+
+    from chromly.intel import srcreview as SR
+
+    monkeypatch.setattr(paths, "STORE_DIR", tmp_path / "store")
+    mirror = tmp_path / "mirror"
+    mirror.mkdir()
+    genv = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+    }
+
+    def git(*a):
+        return subprocess.run(
+            ["git", "-C", str(mirror), *a], check=True, capture_output=True, env=genv
+        )
+
+    git("init", "-q")
+    f = mirror / "src" / "x.cc"
+    f.parent.mkdir(parents=True)
+    f.write_text("\n".join(f"line {i}" for i in range(1, 201)) + "\n")
+    git("add", ".")
+    git("commit", "-q", "-m", "base")
+    lines = f.read_text().splitlines()
+    lines[99:110] = [f"fixed {i}" for i in range(100, 111)]
+    f.write_text("\n".join(lines) + "\n")
+    git("add", ".")
+    git("commit", "-q", "-m", "fix")
+    sha = subprocess.run(
+        ["git", "-C", str(mirror), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+        env=genv,
+    ).stdout.strip()
+
+    rec = tmp_path / "store" / "recon"
+    rec.mkdir(parents=True)
+    (rec / "archaeology-v8.json").write_text(
+        json.dumps({"records": [{"sha": sha, "date": "2026-09-30", "paths": ["src/x.cc"]}]})
+    )
+    monkeypatch.setattr(SR, "mirror_dir_for", lambda name: mirror)
+    r = SR.fix_regions("src/x.cc")
+    assert r is not None
+    assert r["start"] <= 100 and r["end"] >= 110
+    assert r["fix_lines"] >= 11

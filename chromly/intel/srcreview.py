@@ -23,7 +23,7 @@ from pathlib import Path
 
 from chromly import paths
 from chromly.intel import variants as V
-from chromly.intel.watcher import intel_dir
+from chromly.intel.watcher import intel_dir, mirror_dir_for
 from chromly.store import db
 
 MODEL = "opencode-go/deepseek-v4.1-flash"
@@ -42,6 +42,7 @@ WORKDIR TUYỆT ĐỐI: {workdir} — chỉ đọc/ghi trong workdir bằng đư
 
 1. Đọc `{workdir}/meta.json` (file + lý do chọn). File cần review (read-only, snapshot hiện tại):
    `{v8root}/{path}` — đọc bằng grep + read theo vùng (file có thể lớn, đừng đọc 1 lượt).
+   **Vùng trọng tâm**: {focus} — ưu tiên đọc kỹ vùng này trước; phần còn lại chỉ liếc lấy context.
 2. Săn **bug cũ còn sống** trong file này — ưu tiên theo thứ tự:
    a. Memory safety: OOB read/write, use-after-free, type confusion, integer overflow/underflow
       trong size/offset arithmetic, thiếu bounds check, cast ép kiểu không kiểm tra.
@@ -118,6 +119,68 @@ def slug_for(path: str) -> str:
     return "src-" + hashlib.sha1(path.encode()).hexdigest()[:12]
 
 
+_HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", re.M)
+
+
+def fix_regions(
+    path: str, limit_commits: int = 25, gap: int = 60, window: int = 500
+) -> dict | None:
+    """Vùng fix-dense của file theo lịch sử mirror (Quarkslab-style slicing).
+
+    Gom hunk line-ranges (new-side) của các fix commit gần đây nhất chạm file (từ
+    archaeology), cluster theo khoảng cách, trả cửa sổ dày nhất. Đây là HINT focus
+    cho agent — số dòng có thể lệch nhẹ theo version (không phải toạ độ tuyệt đối).
+    """
+    p = archaeology_path()
+    if not p.is_file():
+        return None
+    try:
+        data = json.loads(p.read_text())
+    except json.JSONDecodeError:
+        return None
+    recs = [
+        r
+        for r in data.get("records", [])
+        if isinstance(r, dict) and path in (r.get("paths") or []) and r.get("sha")
+    ]
+    recs.sort(key=lambda r: str(r.get("date", "")), reverse=True)
+    shas = [r["sha"] for r in recs[:limit_commits]]
+    if not shas:
+        return None
+    mirror = mirror_dir_for("v8")
+    ranges: list[tuple[int, int]] = []
+    for sha in shas:
+        try:
+            out = subprocess.run(
+                ["git", "-C", str(mirror), "show", sha, "--", path],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            ).stdout
+        except subprocess.TimeoutExpired:
+            continue
+        for m in _HUNK_RE.finditer(out):
+            start = int(m.group(1))
+            ln = int(m.group(2) or 1)
+            if ln > 0:
+                ranges.append((start, start + ln))
+    if not ranges:
+        return None
+    ranges.sort()
+    clusters: list[list[int]] = []
+    for s, e in ranges:
+        if clusters and s - clusters[-1][1] <= gap:
+            clusters[-1][1] = max(clusters[-1][1], e)
+            clusters[-1][2] += e - s
+        else:
+            clusters.append([s, e, e - s])
+    clusters.sort(key=lambda c: c[2], reverse=True)
+    top = clusters[0]
+    start = max(1, top[0] - 40)
+    end = min(top[1] + 40, start + window)
+    return {"start": start, "end": end, "fix_lines": top[2], "commits": len(shas)}
+
+
 def index_path() -> Path:
     return intel_dir() / "srcreview-index.json"
 
@@ -180,7 +243,8 @@ def run_srcreview(path: str, limit: int = 3) -> dict:
     slug = slug_for(path)
     archive = intel_dir() / slug
     archive.mkdir(parents=True, exist_ok=True)
-    meta = {"kind": "srcreview", "path": path, "created": time.time()}
+    region = fix_regions(path)
+    meta = {"kind": "srcreview", "path": path, "created": time.time(), "focus": region}
     (archive / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2))
 
     from chromly.orchestrator.agents import find_opencode
@@ -192,7 +256,17 @@ def run_srcreview(path: str, limit: int = 3) -> dict:
     scratch = SCRATCH_ROOT / slug
     scratch.mkdir(parents=True, exist_ok=True)
     shutil.copy2(archive / "meta.json", scratch / "meta.json")
-    prompt = SRC_PROMPT.format(workdir=scratch, path=path, v8root=paths.V8_ROOT, limit=limit)
+    if region:
+        focus = (
+            f"dòng ~{region['start']}-{region['end']} "
+            f"({region['fix_lines']} dòng bị sửa bởi {region['commits']} fix commit gần đây — "
+            "bug magnet cục bộ; số dòng lệch nhẹ theo version, đọc rộng hơn ±10%)"
+        )
+    else:
+        focus = "toàn file (không đủ dữ liệu lịch sử để khoanh vùng)"
+    prompt = SRC_PROMPT.format(
+        workdir=scratch, path=path, v8root=paths.V8_ROOT, limit=limit, focus=focus
+    )
 
     t0 = time.monotonic()
     try:
